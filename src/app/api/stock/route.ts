@@ -22,7 +22,7 @@ async function resolveRole(req: Request): Promise<string | null> {
       { username },
       { projection: { role: 1 } }
     );
-    return (user as any)?.role ?? null;
+    return (user as { role?: string })?.role ?? null;
   } catch {
     return null;
   }
@@ -54,7 +54,7 @@ async function resolveUserDisplay(req: Request): Promise<string | null> {
       { projection: { display: 1, username: 1 } }
     );
     
-    return (user as any)?.display || (user as any)?.username || null;
+    return (user as { display?: string; username?: string })?.display || (user as { display?: string; username?: string })?.username || null;
   } catch {
     return null;
   }
@@ -149,24 +149,30 @@ export async function POST(req: Request) {
     const collection = db.collection<CabinetData>("lockers");
 
     // Normalize and validate payload
-    const id = Number((body as any).id);
-    const month = Number((body as any).month);
-    const year = Number((body as any).year);
+    const id = Number((body as { id?: number | string }).id);
+    const month = Number((body as { month?: number | string }).month);
+    const year = Number((body as { year?: number | string }).year);
 
     if (!Number.isFinite(id) || !Number.isFinite(month) || !Number.isFinite(year)) {
       return NextResponse.json({ error: "Invalid id/month/year" }, { status: 400 });
     }
-    const name = (body as any).name ?? `ตู้ ${id}`;
-    const devices = Array.isArray((body as any).devices) ? (body as any).devices : [];
+    const name = (body as { name?: string }).name ?? `ตู้ ${id}`;
+    const devices = Array.isArray((body as { devices?: unknown[] }).devices) ? (body as { devices: unknown[] }).devices : [];
 
-    const normalizedDevices = devices.map((dv: any, idx: number) => ({
-      id: Number(dv?.id ?? idx + 1),
-      name: String(dv?.name ?? `อุปกรณ์ ${idx + 1}`),
-      initialStock: Number(dv?.initialStock ?? 0),
-      stockRecords: Array.isArray(dv?.stockRecords)
-        ? dv.stockRecords.map((r: any) => ({ date: Number(r?.date ?? 0), stock: Number(r?.stock ?? 0) }))
-        : [],
-    }));
+    const normalizedDevices = devices.map((dv: unknown, idx: number) => {
+      const device = dv as { id?: number | string; name?: string; initialStock?: number | string; stockRecords?: unknown[] };
+      return {
+        id: Number(device?.id ?? idx + 1),
+        name: String(device?.name ?? `อุปกรณ์ ${idx + 1}`),
+        initialStock: Number(device?.initialStock ?? 0),
+        stockRecords: Array.isArray(device?.stockRecords)
+          ? device.stockRecords.map((r: unknown) => {
+              const record = r as { date?: number | string; stock?: number | string };
+              return { date: Number(record?.date ?? 0), stock: Number(record?.stock ?? 0) };
+            })
+          : [],
+      };
+    });
 
     const doc: CabinetData = {
       id,
@@ -176,7 +182,7 @@ export async function POST(req: Request) {
       devices: normalizedDevices,
       lastUpdated: new Date(),
       lastUpdatedBy: userDisplay || "Unknown",
-    } as any;
+    };
 
     await collection.replaceOne(
       { id, month, year },
@@ -185,9 +191,9 @@ export async function POST(req: Request) {
     );
 
     return NextResponse.json({ success: true, lastUpdated: (doc.lastUpdated as Date).toISOString() });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("❌ POST Error:", error);
-    return NextResponse.json({ error: error?.message || "Failed to save data" }, { status: 500 });
+    return NextResponse.json({ error: (error as Error)?.message || "Failed to save data" }, { status: 500 });
   }
 }
 
@@ -199,7 +205,16 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: "ต้องเป็น admin หรือ operator เท่านั้น" }, { status: 403 });
     }
     const userDisplay = await resolveUserDisplay(req);
-    const body = await req.json() as any;
+    const body = await req.json() as {
+      cabinetId?: number;
+      deviceId?: number;
+      year?: number;
+      month?: number;
+      day?: number;
+      stock?: number;
+      name?: string;
+      initialStock?: number;
+    };
     const { cabinetId, deviceId, year, month } = body as {
       cabinetId: number;
       deviceId: number;
@@ -273,8 +288,8 @@ export async function PUT(req: Request) {
     }
 
     return NextResponse.json({ error: "Unsupported update payload" }, { status: 400 });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("❌ PUT Error:", error);
-    return NextResponse.json({ error: error?.message || "Failed to update" }, { status: 500 });
+    return NextResponse.json({ error: (error as Error)?.message || "Failed to update" }, { status: 500 });
   }
 }

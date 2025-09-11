@@ -67,11 +67,11 @@ export async function POST(req: Request) {
     try {
       // Set lightweight cookies for downstream authorization checks
       response.cookies.set("username", String(user.username), { path: "/" });
-      if ((user as any)?.role) {
-        response.cookies.set("role", String((user as any).role), { path: "/" });
+      if ((user as unknown as { role?: string })?.role) {
+        response.cookies.set("role", String((user as unknown as { role: string }).role), { path: "/" });
       }
-      if ((user as any)?.display) {
-        response.cookies.set("display", String((user as any).display), { path: "/" });
+      if ((user as unknown as { display?: string })?.display) {
+        response.cookies.set("display", String((user as unknown as { display: string }).display), { path: "/" });
       }
     } catch {}
 

@@ -21,7 +21,7 @@ async function resolveRole(req: Request): Promise<string | null> {
       { username },
       { projection: { role: 1 } }
     );
-    return (user as any)?.role ?? null;
+    return (user as { role?: string })?.role ?? null;
   } catch {
     return null;
   }
