@@ -1,13 +1,13 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import clientPromise from "../../../../../lib/mongodb";
 
 export async function GET(
-  request: Request,
-  { params }: { params: { id: string } }
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Allow both admin and operator to read display name for UX
-    const employeeId = params.id;
+    const { id: employeeId } = await params;
     
     if (!employeeId) {
       return NextResponse.json(
