@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Header from "../../components/Header";
+import { FaPlus, FaChevronLeft, FaChevronRight } from "react-icons/fa";
 
 interface CabinetSummary {
   id: number;
@@ -17,7 +18,13 @@ export default function StockPage() {
   const [cabinets, setCabinets] = useState<CabinetSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newStockNumber, setNewStockNumber] = useState<number | ''>('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const router = useRouter();
+  const itemsPerPage = 9;
 
   // Thai months for display
   const thaiMonths = [
@@ -35,7 +42,7 @@ export default function StockPage() {
     "ธันวาคม",
   ];
 
-  // Cabinet color themes with 8-bit borders
+ 
   const cabinetColors = [
     "from-blue-500 to-blue-600 border-blue-800",
     "from-emerald-500 to-emerald-600 border-emerald-800",
@@ -55,6 +62,13 @@ export default function StockPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
+        // Check admin status
+        const roleRes = await fetch('/api/auth/check-role');
+        if (roleRes.ok) {
+          const roleData = await roleRes.json();
+          setIsAdmin(roleData.role === 'admin');
+        }
+
         const res = await fetch("/api/stock");
         if (!res.ok) {
           throw new Error(`HTTP error! status: ${res.status}`);
@@ -65,7 +79,7 @@ export default function StockPage() {
         }
         setCabinets(data);
       } catch (error) {
-        console.error("Error fetching cabinets:", error);
+        console.error("Error fetching data:", error);
         setError(error instanceof Error ? error.message : 'An unknown error occurred');
       } finally {
         setIsLoading(false);
@@ -73,6 +87,45 @@ export default function StockPage() {
     };
     fetchData();
   }, []);
+
+  const handleAddStock = async () => {
+    if (!newStockNumber || isNaN(Number(newStockNumber)) || Number(newStockNumber) <= 0) {
+      alert('กรุณากรอกหมายเลข Stock ที่ถูกต้อง');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const response = await fetch('/api/stock', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'addStock',
+          stockNumber: Number(newStockNumber)
+        }),
+      });
+
+      const result = await response.json();
+      
+      if (response.ok) {
+        // Refresh the stock list
+        const res = await fetch("/api/stock");
+        const data = await res.json();
+        setCabinets(data);
+        setShowAddModal(false);
+        setNewStockNumber('');
+      } else {
+        throw new Error(result.error || 'Failed to add stock');
+      }
+    } catch (error) {
+      console.error('Error adding stock:', error);
+      alert(error instanceof Error ? error.message : 'Failed to add stock');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   if (isLoading) return (
     <>
@@ -118,25 +171,117 @@ export default function StockPage() {
   return (
     <>
       <Header />
-      <div className="pt-2 min-h-screen">
-        <div className="px-6 pt-4 pb-6">
+      <div className="pt-0 min-h-screen">
+        <div className="px-6 pt-2 pb-6">
           <div className="text-center mb-6">
             <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
-              จัดการสต็อกตู้
+              Stock management
             </h1>
-            <p className="text-gray-600">เลือกตู้ที่ต้องการดูข้อมูล</p>
+            <p className="text-gray-600">เลือกStockที่ต้องการดูข้อมูล</p>
           </div>
           
           <div className="max-w-6xl mx-auto">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {Array.from({ length: 9 }).map((_, i) => {
-                const cab = Array.isArray(cabinets) ? cabinets.find((c) => c?.id === i + 1) : null;
-                const colorClass = cabinetColors[i % cabinetColors.length];
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-800">Stock ทั้งหมด</h2>
+                <p className="text-gray-600 text-sm mt-1">
+                  แสดง {Math.min((currentPage - 1) * itemsPerPage + 1, cabinets.length)}-{Math.min(currentPage * itemsPerPage, cabinets.length)} จากทั้งหมด {cabinets.length} รายการ
+                </p>
+              </div>
+              
+              <div className="flex items-center gap-4 w-full sm:w-auto">
+                {/* Pagination */}
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="p-2 rounded-md bg-gray-200 hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <FaChevronLeft />
+                  </button>
+                  
+                  {Array.from({ length: Math.ceil(cabinets.length / itemsPerPage) }).map((_, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setCurrentPage(i + 1)}
+                      className={`w-8 h-8 text-sm rounded-md ${currentPage === i + 1 ? 'bg-blue-600 text-white' : 'bg-gray-200 hover:bg-gray-300'}`}
+                    >
+                      {i + 1}
+                    </button>
+                  ))}
+                  
+                  <button
+                    onClick={() => setCurrentPage(p => Math.min(Math.ceil(cabinets.length / itemsPerPage), p + 1))}
+                    disabled={currentPage >= Math.ceil(cabinets.length / itemsPerPage)}
+                    className="p-2 rounded-md bg-gray-200 hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <FaChevronRight />
+                  </button>
+                </div>
+                
+                {/* Add Stock Button */}
+                {isAdmin && (
+                  <button
+                    onClick={() => setShowAddModal(true)}
+                    className="flex-shrink-0 flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors whitespace-nowrap"
+                  >
+                    <FaPlus className="mr-2" />
+                    เพิ่ม Stock
+                  </button>
+                )}
+              </div>
+            </div>
+
+          {/* Add Stock Modal */}
+          {showAddModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-lg p-6 w-full max-w-md">
+                <h3 className="text-xl font-bold mb-4">เพิ่ม Stock ใหม่</h3>
+                <div className="mb-4">
+                  <label className="block text-gray-700 mb-2">หมายเลข Stock</label>
+                  <input
+                    type="number"
+                    value={newStockNumber}
+                    onChange={(e) => setNewStockNumber(e.target.value ? parseInt(e.target.value) : '')}
+                    className="w-full p-2 border rounded"
+                    placeholder="ระบุหมายเลข Stock"
+                    min="1"
+                  />
+                </div>
+                <div className="flex justify-end space-x-3">
+                  <button
+                    onClick={() => {
+                      setShowAddModal(false);
+                      setNewStockNumber('');
+                    }}
+                    className="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400"
+                    disabled={isSubmitting}
+                  >
+                    ยกเลิก
+                  </button>
+                  <button
+                    onClick={handleAddStock}
+                    disabled={isSubmitting || !newStockNumber}
+                    className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {isSubmitting ? 'กำลังเพิ่ม...' : 'เพิ่ม Stock'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+            {cabinets
+              .slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+              .map((cab, i) => {
+                const indexInPage = ((currentPage - 1) * itemsPerPage) + i;
+                const colorClass = cabinetColors[indexInPage % cabinetColors.length];
                 
                 return (
                   <div
-                    key={i}
-                    onClick={() => handleCabinetClick(i + 1)}
+                    key={cab.id}
+                    onClick={() => handleCabinetClick(cab.id)}
                     className={`group relative bg-gradient-to-br ${colorClass} p-6 cursor-pointer transform transition-all duration-300 hover:-translate-y-2 hover:scale-105 backdrop-blur-sm
                       border-4 
                       shadow-[8px_8px_0px_rgba(0,0,0,0.3),4px_4px_0px_rgba(0,0,0,0.2),2px_2px_0px_rgba(0,0,0,0.1)]
@@ -184,7 +329,7 @@ export default function StockPage() {
                              }}>
                           <span className="text-2xl">📦</span>
                         </div>
-                        <h2 className="text-xl font-bold text-white font-mono">{`ตู้ ${i + 1}`}</h2>
+                        <h2 className="text-xl font-bold text-white font-mono">{`Stock ${cab.id}`}</h2>
                       </div>
                       
                       <div className="space-y-3">

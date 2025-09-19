@@ -138,11 +138,45 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const role = await resolveRole(req);
-    if (role !== "admin" && role !== "operator") {
-      return NextResponse.json({ error: "ต้องเป็น admin หรือ operator เท่านั้น" }, { status: 403 });
+    if (role !== "admin") {
+      return NextResponse.json({ error: "ต้องเป็น admin เท่านั้น" }, { status: 403 });
     }
+    
     const userDisplay = await resolveUserDisplay(req);
-    const body: CabinetData = await req.json();
+    const body = await req.json();
+    
+    // Handle adding new stock
+    if (body.action === 'addStock' && typeof body.stockNumber === 'number') {
+      const client = await clientPromise;
+      const db = client.db("OR");
+      const collection = db.collection<CabinetData>("lockers");
+      
+      // Check if stock number already exists
+      const existing = await collection.findOne({ id: body.stockNumber });
+      if (existing) {
+        return NextResponse.json(
+          { error: `Stock หมายเลข ${body.stockNumber} มีอยู่แล้ว` },
+          { status: 400 }
+        );
+      }
+      
+      // Create new stock with default values
+      const newStock: CabinetData = {
+        id: body.stockNumber,
+        name: `Stock ${body.stockNumber}`,
+        month: new Date().getMonth() + 1,
+        year: new Date().getFullYear(),
+        devices: [],
+        lastUpdated: new Date(),
+        lastUpdatedBy: userDisplay || 'System',
+      };
+      
+      await collection.insertOne(newStock);
+      return NextResponse.json({ success: true });
+    }
+    
+    // Original POST handler for updating existing stock
+    const bodyData: CabinetData = body;
 
     const client = await clientPromise;
     const db = client.db("OR");

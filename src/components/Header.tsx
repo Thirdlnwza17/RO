@@ -231,7 +231,7 @@ export default function Header() {
                   {/* Main gradient text with Check Stock OR style */}
                   <span className="font-black text-xl sm:text-2xl md:text-3xl leading-tight relative">
                     <span className="bg-gradient-to-r from-blue-600 via-purple-600 to-blue-600 bg-clip-text text-transparent animate-gradient-x">
-                    OR-Cab
+                    OR stock management
                     </span>
                   </span>
                   

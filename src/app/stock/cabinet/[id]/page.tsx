@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Header from "../../../../components/Header";
+import Swal from 'sweetalert2';
 
 interface StockRecord {
   date: number;
@@ -147,16 +148,60 @@ export default function CabinetDetailPage() {
 
   const deleteSelectedDevice = async () => {
     if (!cabinet || selectedDeleteId == null) return;
+    
     const device = cabinet.devices.find((d) => d.id === selectedDeleteId);
-    const confirmMsg = device
-      ? `ต้องการลบอุปกรณ์ "${device.name}" ใช่หรือไม่?`
-      : `ต้องการลบอุปกรณ์นี้ใช่หรือไม่?`;
-    if (!window.confirm(confirmMsg)) return;
+    const deviceName = device?.name || 'อุปกรณ์นี้';
+    
+    const result = await Swal.fire({
+      title: 'ยืนยันการลบ',
+      text: `ต้องการลบอุปกรณ์ "${deviceName}" ใช่หรือไม่?`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33',
+      cancelButtonColor: '#3085d6',
+      confirmButtonText: 'ลบ',
+      cancelButtonText: 'ยกเลิก',
+      reverseButtons: true
+    });
 
-    const newDevices = cabinet.devices.filter((d) => d.id !== selectedDeleteId);
-    const newCabinet: CabinetData = { ...cabinet, devices: newDevices };
-    setCabinet(newCabinet);
-    // Persist will happen when user clicks Save
+    if (!result.isConfirmed) return;
+
+    try {
+      // Show loading
+      Swal.fire({
+        title: 'กำลังลบ...',
+        allowOutsideClick: false,
+        didOpen: () => {
+          Swal.showLoading();
+        }
+      });
+
+      // Simulate API call delay
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      const newDevices = cabinet.devices.filter((d) => d.id !== selectedDeleteId);
+      const newCabinet: CabinetData = { ...cabinet, devices: newDevices };
+      setCabinet(newCabinet);
+      
+      // Show success message
+      await Swal.fire({
+        icon: 'success',
+        title: 'ลบสำเร็จ!',
+        text: `ลบอุปกรณ์ "${deviceName}" เรียบร้อยแล้ว`,
+        confirmButtonText: 'ตกลง',
+        confirmButtonColor: '#3085d6',
+      });
+      
+    } catch (error) {
+      console.error('Error deleting device:', error);
+      await Swal.fire({
+        icon: 'error',
+        title: 'เกิดข้อผิดพลาด',
+        text: 'ไม่สามารถลบอุปกรณ์ได้ กรุณาลองใหม่อีกครั้ง',
+        confirmButtonText: 'ตกลง',
+        confirmButtonColor: '#d33',
+      });
+    }
   };
 
   const addNewDevice = () => {
@@ -215,20 +260,45 @@ export default function CabinetDetailPage() {
 
   const saveData = async () => {
     if (!cabinet) return;
+    
+    // Show loading
+    Swal.fire({
+      title: 'กำลังบันทึกข้อมูล...',
+      allowOutsideClick: false,
+      didOpen: () => {
+        Swal.showLoading();
+      }
+    });
+    
     try {
       const res = await fetch("/api/stock", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(cabinet),
       });
+      
       const data = await res.json();
+      
       if (data.success) {
-        alert("บันทึกข้อมูลเรียบร้อยแล้ว");
+        await Swal.fire({
+          icon: 'success',
+          title: 'สำเร็จ!',
+          text: 'บันทึกข้อมูลเรียบร้อยแล้ว',
+          confirmButtonText: 'ตกลง',
+          confirmButtonColor: '#3085d6',
+        });
       } else {
-        alert("บันทึกไม่สำเร็จ");
+        throw new Error(data.message || 'บันทึกไม่สำเร็จ');
       }
     } catch (error) {
       console.error("Error saving cabinet:", error);
+      await Swal.fire({
+        icon: 'error',
+        title: 'เกิดข้อผิดพลาด',
+        text: error instanceof Error ? error.message : 'ไม่สามารถบันทึกข้อมูลได้',
+        confirmButtonText: 'ตกลง',
+        confirmButtonColor: '#d33',
+      });
     }
   };
 
