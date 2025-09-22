@@ -18,7 +18,6 @@ export default function QrCodeScanner({
   const [error, setError] = useState<string | null>(null);
   const [permissionGranted, setPermissionGranted] = useState(false);
 
-  // ตรวจสอบว่าเป็น client-side และมี secure context
   const [isClient, setIsClient] = useState(false);
   const [isSecureContext, setIsSecureContext] = useState(false);
 
@@ -27,69 +26,29 @@ export default function QrCodeScanner({
     setIsSecureContext(window.location.protocol === 'https:' || window.location.hostname === 'localhost');
   }, []);
 
-  // ขอสิทธิ์เข้าถึงกล้อง
   const detectCodeType = (text: string): string => {
-    // URL
-    if (text.startsWith('http://') || text.startsWith('https://')) {
-      return 'URL';
-    }
-    // Email
-    if (text.includes('@') && text.includes('.')) {
-      return 'Email';
-    }
-    // Phone number
-    if (/^\+?[\d\s-()]+$/.test(text) && text.replace(/\D/g, '').length >= 10) {
-      return 'Phone';
-    }
-    // WiFi QR Code
-    if (text.startsWith('WIFI:')) {
-      return 'WiFi';
-    }
-    // Contact (vCard)
-    if (text.startsWith('BEGIN:VCARD') || text.startsWith('MECARD:')) {
-      return 'Contact';
-    }
-    // SMS
-    if (text.startsWith('SMSTO:') || text.startsWith('sms:')) {
-      return 'SMS';
-    }
-    // Geographic location
-    if (text.startsWith('geo:')) {
-      return 'Location';
-    }
-    // Event (Calendar)
-    if (text.startsWith('BEGIN:VEVENT')) {
-      return 'Calendar Event';
-    }
-    // Cryptocurrency
-    if (text.startsWith('bitcoin:') || text.startsWith('ethereum:')) {
-      return 'Cryptocurrency';
-    }
-    // UPC/EAN Barcode (numbers only)
-    if (/^\d{8,14}$/.test(text)) {
-      return 'Product Barcode';
-    }
-    // Plain text
+    if (text.startsWith('http://') || text.startsWith('https://')) return 'URL';
+    if (text.includes('@') && text.includes('.')) return 'Email';
+    if (/^\+?[\d\s-()]+$/.test(text) && text.replace(/\D/g, '').length >= 10) return 'Phone';
+    if (text.startsWith('WIFI:')) return 'WiFi';
+    if (text.startsWith('BEGIN:VCARD') || text.startsWith('MECARD:')) return 'Contact';
+    if (text.startsWith('SMSTO:') || text.startsWith('sms:')) return 'SMS';
+    if (text.startsWith('geo:')) return 'Location';
+    if (text.startsWith('BEGIN:VEVENT')) return 'Calendar Event';
+    if (text.startsWith('bitcoin:') || text.startsWith('ethereum:')) return 'Cryptocurrency';
+    if (/^\d{8,14}$/.test(text)) return 'Product Barcode';
     return 'Text';
   };
+
   const requestCameraPermission = async () => {
     try {
       setIsLoading(true);
       setError(null);
-      
-      // ตรวจสอบว่ามี MediaDevices API
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         throw new Error('Camera API not supported in this browser');
       }
-
-      // ขอสิทธิ์เข้าถึงกล้อง
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: "environment" } 
-      });
-      
-      // หยุด stream ทันที (เราแค่ต้องการสิทธิ์)
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
       stream.getTracks().forEach(track => track.stop());
-      
       setPermissionGranted(true);
       return true;
     } catch (err: unknown) {
@@ -103,7 +62,6 @@ export default function QrCodeScanner({
     }
   };
 
-  // โหลด html5-qrcode แบบ dynamic import
   const loadHtml5QrCode = async () => {
     try {
       const { Html5Qrcode } = await import("html5-qrcode");
@@ -119,75 +77,50 @@ export default function QrCodeScanner({
       setError("QR Scanner ต้องใช้งานในสภาพแวดล้อมที่ปลอดภัย (HTTPS)");
       return;
     }
-
     const container = document.getElementById(qrCodeRegionId);
     if (!container) {
       console.error("❌ QR container not found.");
       return;
     }
-
-    if (isScanningRef.current || html5QrCodeRef.current) {
-      console.log("⚠️ Scanner already running, skip.");
-      return;
-    }
+    if (isScanningRef.current || html5QrCodeRef.current) return;
 
     try {
       setIsLoading(true);
       setError(null);
-
-      // โหลด library
       const Html5Qrcode = await loadHtml5QrCode();
       const html5QrCode = new Html5Qrcode(qrCodeRegionId);
       html5QrCodeRef.current = html5QrCode as unknown;
 
       const config = {
         fps: 10,
-        qrbox: { width: 250, height: 250 },
-        aspectRatio: 1.0,
-        supportedScanTypes: [
-          // QR Code formats
-          0, // QR_CODE
-          // Data Matrix
-          1, // DATA_MATRIX
-          // Aztec
-          2, // AZTEC
-          // PDF417
-          3, // PDF_417
-          // MaxiCode
-          4, // MAXI_CODE
-          // 1D Barcodes
-          5, // RSS_14
-          6, // RSS_EXPANDED
-          7, // UPC_A
-          8, // UPC_E
-          9, // UPC_EAN_EXTENSION
-          10, // EAN_13
-          11, // EAN_8
-          12, // CODABAR
-          13, // CODE_39
-          14, // CODE_93
-          15, // CODE_128
-          16, // ITF
-        ],
+        qrbox: { width: 300, height: 150 }, // ปรับให้เหมาะกับ Barcode 1D
+        aspectRatio: 2.0,
+        supportedScanTypes: Array.from({ length: 17 }, (_, i) => i), // 0-16 ครอบคลุม QR และ Barcode
         rememberLastUsedCamera: true,
         showTorchButtonIfSupported: true,
       };
 
-      // เริ่มสแกน
+      let isProcessing = false;
+
       await html5QrCode.start(
         { facingMode: "environment" },
         config,
-        (decodedText: string) => {
-          console.log("✅ QR/Barcode detected:", decodedText);
-          
-          // แยกประเภทของ code ที่ detect ได้
-          const codeType = detectCodeType(decodedText);
-          console.log("📋 Code type:", codeType);
-          
-          onScanSuccess(decodedText);
+        async (decodedText: string) => {
+          if (isProcessing) return;
+          isProcessing = true;
+          try {
+            console.log("✅ QR/Barcode detected:", decodedText);
+            const analysis = detectCodeType(decodedText);
+            console.log(`📋 Detected: ${analysis}`);
+            onScanSuccess(decodedText);
+            await stopScanner();
+          } catch (err) {
+            console.error("Error processing QR code:", err);
+          } finally {
+            isProcessing = false;
+          }
         },
         (errorMessage: string) => {
-          // กรองข้อผิดพลาดที่ไม่สำคัญ
           if (
             !errorMessage.includes("NotFoundException") &&
             !errorMessage.includes("IndexSizeError") &&
@@ -200,7 +133,6 @@ export default function QrCodeScanner({
       );
 
       isScanningRef.current = true;
-      console.log("📷 QR scanner started.");
       setIsLoading(false);
     } catch (err: unknown) {
       const error = err as Error;
@@ -213,10 +145,7 @@ export default function QrCodeScanner({
   const stopScanner = async () => {
     if (html5QrCodeRef.current && isScanningRef.current) {
       try {
-        const scanner = html5QrCodeRef.current as {
-          stop: () => Promise<void>;
-          clear: () => void;
-        };
+        const scanner = html5QrCodeRef.current as { stop: () => Promise<void>; clear: () => void; };
         await scanner.stop();
         scanner.clear();
         html5QrCodeRef.current = null;
@@ -228,14 +157,10 @@ export default function QrCodeScanner({
     }
   };
 
-  // Cleanup เมื่อ component unmount
   useEffect(() => {
-    return () => {
-      stopScanner();
-    };
+    return () => { stopScanner(); };
   }, []);
 
-  // เริ่มสแกนอัตโนมัติเมื่อได้รับสิทธิ์
   useEffect(() => {
     if (permissionGranted && isClient && isSecureContext) {
       const timer = setTimeout(startScanner, 500);
@@ -243,31 +168,24 @@ export default function QrCodeScanner({
     }
   }, [permissionGranted, isClient, isSecureContext, onScanSuccess, onScanFailure]);
 
-  // แสดงข้อความเมื่อไม่อยู่ในสภาพแวดล้อมที่ปลอดภัย
-  if (!isClient) {
-    return (
-      <div className="flex flex-col items-center p-4">
-        <div className="w-[300px] h-[300px] bg-gray-200 rounded-lg flex items-center justify-center">
-          <span className="text-gray-500">กำลังโหลด...</span>
-        </div>
+  if (!isClient) return (
+    <div className="flex flex-col items-center p-4">
+      <div className="w-[300px] h-[300px] bg-gray-200 rounded-lg flex items-center justify-center">
+        <span className="text-gray-500">กำลังโหลด...</span>
       </div>
-    );
-  }
+    </div>
+  );
 
-  if (!isSecureContext) {
-    return (
-      <div className="flex flex-col items-center p-4">
-        <div className="w-[300px] h-[300px] bg-red-50 border-2 border-red-200 rounded-lg flex items-center justify-center">
-          <div className="text-center p-4">
-            <p className="text-red-600 font-semibold mb-2">🔒 ต้องใช้ HTTPS</p>
-            <p className="text-sm text-red-500">
-              QR Scanner ต้องใช้งานผ่าน HTTPS เท่านั้น
-            </p>
-          </div>
+  if (!isSecureContext) return (
+    <div className="flex flex-col items-center p-4">
+      <div className="w-[300px] h-[300px] bg-red-50 border-2 border-red-200 rounded-lg flex items-center justify-center">
+        <div className="text-center p-4">
+          <p className="text-red-600 font-semibold mb-2">🔒 ต้องใช้ HTTPS</p>
+          <p className="text-sm text-red-500">QR Scanner ต้องใช้งานผ่าน HTTPS เท่านั้น</p>
         </div>
       </div>
-    );
-  }
+    </div>
+  );
 
   return (
     <div className="flex flex-col items-center p-4">
@@ -287,16 +205,16 @@ export default function QrCodeScanner({
       ) : (
         <>
           <div id={qrCodeRegionId} className="w-[300px] h-[300px] rounded-lg overflow-hidden" />
-          {isLoading && (
-            <p className="mt-2 text-sm text-blue-600">📷 กำลังเปิดกล้อง...</p>
-          )}
+          {isLoading && <p className="mt-2 text-sm text-blue-600">📷 กำลังเปิดกล้อง...</p>}
           {isScanningRef.current && (
             <div className="mt-2 text-center">
               <p className="text-sm text-gray-600 mb-2">
-                📷 ส่องกล้องไปที่ QR Code, Barcode หรือ Text
+                📷 ส่องกล้องไปที่ QR Code อุปกรณ์, รายการ หรือ Barcode
               </p>
-              <div className="text-xs text-gray-500 mb-2">
-                รองรับ: QR Code, Data Matrix, Aztec, PDF417, UPC, EAN, Code128, Code39
+              <div className="text-xs text-gray-500 mb-2 space-y-1">
+                <div>🏷️ รองรับ: Asset Tag, Serial Number, Equipment ID</div>
+                <div>📊 Inventory Code, Part Number, Location Code</div>
+                <div>🌐 MAC/IP Address, WiFi Config, Product Barcode</div>
               </div>
               <button
                 onClick={stopScanner}
@@ -308,15 +226,12 @@ export default function QrCodeScanner({
           )}
         </>
       )}
-      
+
       {error && (
         <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-center">
           <p className="text-sm text-red-600">❌ {error}</p>
           <button
-            onClick={() => {
-              setError(null);
-              setPermissionGranted(false);
-            }}
+            onClick={() => { setError(null); setPermissionGranted(false); }}
             className="mt-1 px-2 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600"
           >
             ลองใหม่
