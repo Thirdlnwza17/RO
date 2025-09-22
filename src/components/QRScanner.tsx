@@ -1,6 +1,19 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Html5Qrcode } from "html5-qrcode";
+
+// Custom type for QR code result with detection points
+type DetectionPoint = {
+  x: number;
+  y: number;
+};
+
+// Extended type for QR code scanning result
+interface QrCodeScanResult {
+  decodedText: string;
+  resultPoints?: DetectionPoint[];
+}
 
 interface QrCodeScannerProps {
   onScanSuccess: (decodedText: string) => void;
@@ -12,11 +25,12 @@ export default function QrCodeScanner({
   onScanFailure,
 }: QrCodeScannerProps) {
   const qrCodeRegionId = "qr-code-region";
-  const html5QrCodeRef = useRef<unknown>(null);
+  const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
   const isScanningRef = useRef(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [permissionGranted, setPermissionGranted] = useState(false);
+  const [highlightBox, setHighlightBox] = useState<{ x: number, y: number, width: number, height: number } | null>(null);
 
   const [isClient, setIsClient] = useState(false);
   const [isSecureContext, setIsSecureContext] = useState(false);
@@ -89,13 +103,13 @@ export default function QrCodeScanner({
       setError(null);
       const Html5Qrcode = await loadHtml5QrCode();
       const html5QrCode = new Html5Qrcode(qrCodeRegionId);
-      html5QrCodeRef.current = html5QrCode as unknown;
+      html5QrCodeRef.current = html5QrCode;
 
       const config = {
         fps: 10,
-        qrbox: { width: 300, height: 150 }, // ปรับให้เหมาะกับ Barcode 1D
+        qrbox: { width: 320, height: 180 }, // กรอบใหญ่และกว้างสำหรับ 1D Barcode
         aspectRatio: 2.0,
-        supportedScanTypes: Array.from({ length: 17 }, (_, i) => i), // 0-16 ครอบคลุม QR และ Barcode
+        supportedScanTypes: Array.from({ length: 17 }, (_, i) => i),
         rememberLastUsedCamera: true,
         showTorchButtonIfSupported: true,
       };
@@ -106,8 +120,23 @@ export default function QrCodeScanner({
         { facingMode: "environment" },
         config,
         async (decodedText: string) => {
+          // For now, we'll just show a small indicator where the code was detected
+          // The actual detection box is not available in the standard API
+          const container = document.getElementById(qrCodeRegionId);
+          if (container) {
+            const rect = container.getBoundingClientRect();
+            const size = Math.min(rect.width, rect.height) * 0.3; // 30% of container size
+            setHighlightBox({
+              x: (rect.width - size) / 2,
+              y: (rect.height - size) / 2,
+              width: size,
+              height: size,
+            });
+          }
+
           if (isProcessing) return;
           isProcessing = true;
+
           try {
             console.log("✅ QR/Barcode detected:", decodedText);
             const analysis = detectCodeType(decodedText);
@@ -121,11 +150,7 @@ export default function QrCodeScanner({
           }
         },
         (errorMessage: string) => {
-          if (
-            !errorMessage.includes("NotFoundException") &&
-            !errorMessage.includes("IndexSizeError") &&
-            !errorMessage.includes("No MultiFormat Readers")
-          ) {
+          if (!errorMessage.includes("NotFoundException") && !errorMessage.includes("IndexSizeError") && !errorMessage.includes("No MultiFormat Readers")) {
             console.warn("⚠️ QR Scan Error:", errorMessage);
             onScanFailure?.(errorMessage);
           }
@@ -150,6 +175,7 @@ export default function QrCodeScanner({
         scanner.clear();
         html5QrCodeRef.current = null;
         isScanningRef.current = false;
+        setHighlightBox(null);
         console.log("🛑 QR scanner stopped.");
       } catch (err: unknown) {
         console.error("❌ Stop scanner error:", err);
@@ -157,38 +183,14 @@ export default function QrCodeScanner({
     }
   };
 
-  useEffect(() => {
-    return () => { stopScanner(); };
-  }, []);
+  useEffect(() => { return () => { stopScanner(); }; }, []);
+  useEffect(() => { if (permissionGranted && isClient && isSecureContext) { const timer = setTimeout(startScanner, 500); return () => clearTimeout(timer); } }, [permissionGranted, isClient, isSecureContext, onScanSuccess, onScanFailure]);
 
-  useEffect(() => {
-    if (permissionGranted && isClient && isSecureContext) {
-      const timer = setTimeout(startScanner, 500);
-      return () => clearTimeout(timer);
-    }
-  }, [permissionGranted, isClient, isSecureContext, onScanSuccess, onScanFailure]);
-
-  if (!isClient) return (
-    <div className="flex flex-col items-center p-4">
-      <div className="w-[300px] h-[300px] bg-gray-200 rounded-lg flex items-center justify-center">
-        <span className="text-gray-500">กำลังโหลด...</span>
-      </div>
-    </div>
-  );
-
-  if (!isSecureContext) return (
-    <div className="flex flex-col items-center p-4">
-      <div className="w-[300px] h-[300px] bg-red-50 border-2 border-red-200 rounded-lg flex items-center justify-center">
-        <div className="text-center p-4">
-          <p className="text-red-600 font-semibold mb-2">🔒 ต้องใช้ HTTPS</p>
-          <p className="text-sm text-red-500">QR Scanner ต้องใช้งานผ่าน HTTPS เท่านั้น</p>
-        </div>
-      </div>
-    </div>
-  );
+  if (!isClient) return <div className="flex flex-col items-center p-4"><div className="w-[300px] h-[300px] bg-gray-200 rounded-lg flex items-center justify-center"><span className="text-gray-500">กำลังโหลด...</span></div></div>;
+  if (!isSecureContext) return <div className="flex flex-col items-center p-4"><div className="w-[300px] h-[300px] bg-red-50 border-2 border-red-200 rounded-lg flex items-center justify-center"><div className="text-center p-4"><p className="text-red-600 font-semibold mb-2">🔒 ต้องใช้ HTTPS</p><p className="text-sm text-red-500">QR Scanner ต้องใช้งานผ่าน HTTPS เท่านั้น</p></div></div></div>;
 
   return (
-    <div className="flex flex-col items-center p-4">
+    <div className="flex flex-col items-center p-4 relative">
       {!permissionGranted ? (
         <div className="w-[300px] h-[300px] bg-blue-50 border-2 border-blue-200 rounded-lg flex items-center justify-center">
           <div className="text-center p-4">
@@ -204,38 +206,28 @@ export default function QrCodeScanner({
         </div>
       ) : (
         <>
-          <div id={qrCodeRegionId} className="w-[300px] h-[300px] rounded-lg overflow-hidden" />
-          {isLoading && <p className="mt-2 text-sm text-blue-600">📷 กำลังเปิดกล้อง...</p>}
-          {isScanningRef.current && (
-            <div className="mt-2 text-center">
-              <p className="text-sm text-gray-600 mb-2">
-                📷 ส่องกล้องไปที่ QR Code อุปกรณ์, รายการ หรือ Barcode
-              </p>
-              <div className="text-xs text-gray-500 mb-2 space-y-1">
-                <div>🏷️ รองรับ: Asset Tag, Serial Number, Equipment ID</div>
-                <div>📊 Inventory Code, Part Number, Location Code</div>
-                <div>🌐 MAC/IP Address, WiFi Config, Product Barcode</div>
-              </div>
-              <button
-                onClick={stopScanner}
-                className="px-3 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600"
-              >
-                หยุดสแกน
-              </button>
-            </div>
+          <div id={qrCodeRegionId} className="w-[100%] max-w-[400px] h-[250px] rounded-lg overflow-hidden relative" />
+          {highlightBox && (
+            <div
+              style={{
+                position: 'absolute',
+                border: '2px solid lime',
+                left: highlightBox.x,
+                top: highlightBox.y,
+                width: highlightBox.width,
+                height: highlightBox.height,
+                pointerEvents: 'none',
+              }}
+            />
           )}
+          {isLoading && <p className="mt-2 text-sm text-blue-600">📷 กำลังเปิดกล้อง...</p>}
         </>
       )}
 
       {error && (
         <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-center">
           <p className="text-sm text-red-600">❌ {error}</p>
-          <button
-            onClick={() => { setError(null); setPermissionGranted(false); }}
-            className="mt-1 px-2 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600"
-          >
-            ลองใหม่
-          </button>
+          <button onClick={() => { setError(null); setPermissionGranted(false); }} className="mt-1 px-2 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600">ลองใหม่</button>
         </div>
       )}
     </div>
