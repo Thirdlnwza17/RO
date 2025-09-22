@@ -140,13 +140,9 @@ export default function QrCodeScanner({
         disableFlip: false, // อนุญาตให้ flip ได้
       };
 
-      // เริ่มสแกน
+      // เริ่มสแกน - ใช้แค่ deviceId เท่านั้น
       await html5QrCode.start(
-        { 
-          deviceId: { exact: selectedCamera.id },
-          // เพิ่ม constraints สำหรับ iOS
-          facingMode: { ideal: "environment" }
-        },
+        { deviceId: { exact: selectedCamera.id } },
         config,
         (decodedText) => {
           console.log("✅ QR Code detected:", decodedText);
