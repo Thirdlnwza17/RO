@@ -17,36 +17,144 @@ const Html5QrcodePlugin = dynamic(
     }) {
       const qrRef = useRef<InstanceType<typeof Html5Qrcode> | null>(null);
       const containerId = 'qr-reader' + Math.random().toString(36).substr(2, 9);
+      const [cameraError, setCameraError] = useState<string | null>(null);
+      const [isMounted, setIsMounted] = useState(false);
+
+      // Use a ref to track if we've already initialized the scanner
+      const isInitialized = useRef(false);
+
+      // Ensure container is mounted before initializing
+      const containerRef = useRef<HTMLDivElement>(null);
 
       useEffect(() => {
-        const config = { 
-          fps: 10,
-          qrbox: { width: 250, height: 250 },
-          aspectRatio: 1.0
+        if (containerRef.current) {
+          setIsMounted(true);
+        }
+      }, []);
+
+      useEffect(() => {
+        if (!isMounted) return;
+        if (isInitialized.current) return;
+
+        const initializeScanner = async () => {
+          try {
+            // Add a small delay to ensure the container is fully rendered
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            const devices = await Html5Qrcode.getCameras();
+            if (!devices || devices.length === 0) {
+              throw new Error('No cameras found');
+            }
+
+            const config = { 
+              fps: 10,
+              qrbox: { width: 250, height: 250 },
+              aspectRatio: 1.0,
+              disableFlip: false
+            };
+            
+            qrRef.current = new Html5Qrcode(containerId);
+            
+            // Try back camera first, if not available try front camera
+            const cameraId = devices.find(d => 
+              d.label && typeof d.label === 'string' && d.label.toLowerCase().includes('back')
+            )?.id || devices[0]?.id || { facingMode: 'environment' };
+            
+            // Ensure the container exists and has dimensions
+            const container = document.getElementById(containerId);
+            if (!container || container.offsetWidth === 0 || container.offsetHeight === 0) {
+              throw new Error('Scanner container is not properly sized');
+            }
+            
+            await qrRef.current.start(
+              cameraId,
+              config,
+              onScanSuccess,
+              onScanFailure
+            );
+            
+            isInitialized.current = true;
+            setCameraError(null);
+          } catch (error) {
+            console.error('Failed to initialize QR scanner:', error);
+            setCameraError('ไม่สามารถเริ่มต้นกล้องได้ กรุณาอนุญาตการใช้งานกล้องและรีเฟรชหน้าเว็บ');
+            onScanFailure(error);
+          }
         };
-        
-        qrRef.current = new Html5Qrcode(containerId);
-        
-        qrRef.current.start(
-          { facingMode: 'environment' },
-          config,
-          onScanSuccess,
-          onScanFailure
-        ).catch((err: unknown) => {
-          console.error('Failed to start QR scanner', err);
-        });
+
+        initializeScanner();
 
         return () => {
-          if (qrRef.current && qrRef.current.isScanning) {
-            qrRef.current.stop().catch(console.error);
-          }
+          const stopScanner = async () => {
+            if (qrRef.current?.isScanning) {
+              try {
+                await qrRef.current.stop();
+              } catch (error) {
+                console.error('Error stopping QR scanner:', error);
+              }
+            }
+            return stopScanner();
+          };
+          
+          stopScanner().catch(console.error);
         };
       }, []);
 
-      return <div id={containerId} className="w-full max-w-md mx-auto" style={{ minHeight: '300px' }} />;
+      if (cameraError) {
+        return (
+          <div className="text-center p-4 bg-red-50 rounded-lg">
+            <p className="text-red-600 font-medium">{cameraError}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="mt-2 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+            >
+              ลองอีกครั้ง
+            </button>
+          </div>
+        );
+      }
+
+      return (
+        <div className="relative w-full max-w-md mx-auto" style={{ minHeight: '300px' }}>
+          <div 
+            id={containerId} 
+            ref={containerRef}
+            className="w-full h-full bg-gray-100 rounded-lg overflow-hidden"
+            style={{ minHeight: '300px' }}
+          />
+          <div className="absolute inset-0 border-4 border-blue-400 rounded-lg pointer-events-none"></div>
+          <p className="text-center mt-2 text-sm text-gray-600">สแกน QR Code ในกรอบสีฟ้า</p>
+          {cameraError && (
+            <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center rounded-lg">
+              <div className="bg-white p-4 rounded-lg text-center">
+                <p className="text-red-600 font-medium mb-2">{cameraError}</p>
+                <button
+                  onClick={() => window.location.reload()}
+                  className="mt-2 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm"
+                >
+                  ลองอีกครั้ง
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      );
     };
   }),
-  { ssr: false, loading: () => <p className="text-center p-4">กำลังโหลดเครื่องสแกน QR Code...</p> }
+  { ssr: false, loading: () => (
+    <div className="flex flex-col items-center justify-center p-6">
+      <div className="animate-pulse flex space-x-4">
+        <div className="flex-1 space-y-4 py-1">
+          <div className="h-4 bg-gray-300 rounded w-3/4"></div>
+          <div className="space-y-2">
+            <div className="h-4 bg-gray-300 rounded"></div>
+            <div className="h-4 bg-gray-300 rounded w-5/6"></div>
+          </div>
+        </div>
+      </div>
+      <p className="mt-4 text-gray-600">กำลังโหลดเครื่องสแกน QR Code...</p>
+    </div>
+  ) }
 );
 
 interface StockRecord {
