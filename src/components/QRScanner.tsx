@@ -169,7 +169,7 @@ export default function QrCodeScanner({
       setIsScanning(true);
       setIsLoading(false);
       console.log("📷 QR scanner started with camera:", selectedCamera.label);
-    } catch (err: any) {
+    } catch (err: unknown) {
       setIsLoading(false);
       let errorMessage = "❌ ไม่สามารถเปิดกล้องได้";
       
@@ -179,11 +179,13 @@ export default function QrCodeScanner({
         errorMessage += " (ตรวจสอบ HTTPS และ permission ของเบราว์เซอร์)";
       }
       
-      if (err.message?.includes("Permission denied")) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      
+      if (errorMsg.includes("Permission denied")) {
         errorMessage = "❌ ไม่ได้รับอนุญาตให้ใช้งานกล้อง กรุณาอนุญาตในการตั้งค่าเบราว์เซอร์";
-      } else if (err.message?.includes("NotFoundError")) {
+      } else if (errorMsg.includes("NotFoundError")) {
         errorMessage = "❌ ไม่พบกล้องที่สามารถใช้งานได้";
-      } else if (err.message?.includes("NotAllowedError")) {
+      } else if (errorMsg.includes("NotAllowedError")) {
         errorMessage = "❌ การเข้าถึงกล้องถูกปฏิเสธ กรุณาตรวจสอบการตั้งค่าความปลอดภัย";
       }
       
