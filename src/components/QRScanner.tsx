@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
+import dynamic from "next/dynamic";
+import { Html5QrcodeSupportedFormats, Html5Qrcode } from "html5-qrcode";
 
 interface ScannerConfig {
   fps: number;
@@ -25,25 +26,31 @@ export default function QrCodeScanner({ onScanSuccess, onScanFailure }: QrCodeSc
   const [isClient, setIsClient] = useState(false);
   const [permissionGranted, setPermissionGranted] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [highlightBox, setHighlightBox] = useState<{ x: number, y: number, width: number, height: number } | null>(null);
+  const [highlightBox, setHighlightBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  useEffect(() => { setIsClient(true); }, []);
+  useEffect(() => setIsClient(true), []);
 
   const requestCameraPermission = async () => {
+    if (!navigator?.mediaDevices?.getUserMedia) {
+      setError("กล้องไม่สามารถใช้งานบน environment นี้ได้");
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
       stream.getTracks().forEach(track => track.stop());
       setPermissionGranted(true);
     } catch (err: unknown) {
-        const error = err instanceof Error ? err : new Error(String(err));
-        setError("ไม่สามารถเข้าถึงกล้องได้: " + error.message);
-        setPermissionGranted(false);
-      } finally {
-        setIsLoading(false);
-      }
+      const errorObj = err instanceof Error ? err : new Error(String(err));
+      setError("ไม่สามารถเข้าถึงกล้องได้: " + errorObj.message);
+      setPermissionGranted(false);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const detectCodeType = (text: string): string => {
@@ -63,7 +70,6 @@ export default function QrCodeScanner({ onScanSuccess, onScanFailure }: QrCodeSc
       const config: ScannerConfig = {
         fps: 15,
         qrbox: { width: 300, height: 200 },
-        // ครอบคลุมทุกชนิดของ QR/Barcode
         formatsToSupport: [
           Html5QrcodeSupportedFormats.QR_CODE,
           Html5QrcodeSupportedFormats.AZTEC,
@@ -91,7 +97,7 @@ export default function QrCodeScanner({ onScanSuccess, onScanFailure }: QrCodeSc
       await scanner.start(
         { facingMode: "environment" },
         config,
-        (decodedText, result) => {
+        (decodedText: string, result) => {
           try {
             const container = document.getElementById(qrRegionId);
             if (container) {
@@ -107,18 +113,18 @@ export default function QrCodeScanner({ onScanSuccess, onScanFailure }: QrCodeSc
 
             const type = detectCodeType(decodedText);
             onScanSuccess(decodedText, type);
-          } catch (err) {
+          } catch (err: unknown) {
             console.error("Processing error:", err);
           }
         },
-        (errMsg) => {
+        (errMsg: string) => {
           if (!errMsg.includes("NotFoundException")) onScanFailure?.(errMsg);
         }
       );
     } catch (err: unknown) {
-        const error = err instanceof Error ? err : new Error(String(err));
-        setError("เริ่มสแกนไม่สำเร็จ: " + error.message);
-      }
+      const errorObj = err instanceof Error ? err : new Error(String(err));
+      setError("เริ่มสแกนไม่สำเร็จ: " + errorObj.message);
+    }
   };
 
   const stopScanner = async () => {
@@ -130,9 +136,7 @@ export default function QrCodeScanner({ onScanSuccess, onScanFailure }: QrCodeSc
     }
   };
 
-  useEffect(() => {
-    return () => { stopScanner(); };
-  }, []);
+  useEffect(() => () => { stopScanner(); }, []);
 
   useEffect(() => {
     if (permissionGranted) {
