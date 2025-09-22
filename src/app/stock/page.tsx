@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { motion } from "framer-motion";
 import Header from "../../components/Header";
 import { FaPlus, FaChevronLeft, FaChevronRight } from "react-icons/fa";
 
@@ -161,7 +162,7 @@ export default function StockPage() {
         <div className="bg-yellow-50 border-2 border-yellow-200 rounded-xl p-6 max-w-md mx-auto mt-20">
           <div className="text-yellow-600 text-center">
             <div className="text-2xl mb-2">📁</div>
-            <div className="font-semibold">ไม่พบข้อมูลตู้</div>
+            <div className="font-semibold">ไม่พบข้อมูล</div>
           </div>
         </div>
       </div>
@@ -174,8 +175,27 @@ export default function StockPage() {
       <div className="pt-0 min-h-screen">
         <div className="px-6 pt-2 pb-6">
           <div className="text-center mb-6">
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
-              Stock management
+            <h1 className="text-4xl font-bold mb-2">
+              <div className="flex justify-center space-x-1">
+                {"Let's Manage".split('').map((letter, index) => (
+                  <motion.span
+                    key={index}
+                    className="inline-block bg-gradient-to-r from-blue-800 via-blue-600 to-blue-400 bg-clip-text text-transparent"
+                    animate={{
+                      y: [0, -10, 0],
+                    }}
+                    transition={{
+                      duration: 1.5,
+                      repeat: Infinity,
+                      repeatType: "loop",
+                      delay: index * 0.3,
+                      ease: "easeInOut",
+                    }}
+                  >
+                    {letter === ' ' ? '\u00A0' : letter}
+                  </motion.span>
+                ))}
+              </div>
             </h1>
             <p className="text-gray-600">เลือกStockที่ต้องการดูข้อมูล</p>
           </div>
@@ -413,7 +433,7 @@ export default function StockPage() {
                        clipPath: `polygon(0 4px, 4px 4px, 4px 0, calc(100% - 4px) 0, calc(100% - 4px) 4px, 100% 4px, 100% calc(100% - 4px), calc(100% - 4px) calc(100% - 4px), calc(100% - 4px) 100%, 4px 100%, 4px calc(100% - 4px), 0 calc(100% - 4px))`
                      }}>
                   <div className="text-2xl font-bold text-blue-600 font-mono">9</div>
-                  <div className="text-gray-600 text-sm font-mono">ตู้ทั้งหมด</div>
+                  <div className="text-gray-600 text-sm font-mono">Stockทั้งหมด</div>
                 </div>
                 <div className="text-center p-4 bg-green-100 border-2 border-green-600"
                      style={{
@@ -422,7 +442,7 @@ export default function StockPage() {
                   <div className="text-2xl font-bold text-green-600 font-mono">
                     {cabinets.filter(c => c?.tableCount && c.tableCount > 0).length}
                   </div>
-                  <div className="text-gray-600 text-sm font-mono">ตู้ที่มีข้อมูล</div>
+                  <div className="text-gray-600 text-sm font-mono">Stockที่มีข้อมูล</div>
                 </div>
                 <div className="text-center p-4 bg-purple-100 border-2 border-purple-600"
                      style={{
@@ -438,6 +458,26 @@ export default function StockPage() {
           </div>
         </div>
       </div>
+      
+      <style jsx global>{`
+        /* Gradient animation keyframes */
+        @keyframes gradient-x {
+          0%, 100% {
+            background-size: 200% 200%;
+            background-position: left center;
+          }
+          50% {
+            background-size: 200% 200%;
+            background-position: right center;
+          }
+        }
+        
+        .animate-gradient-x {
+          background-size: 200% 200%;
+          animation: gradient-x 3s ease infinite;
+          display: inline-block;
+        }
+      `}</style>
     </>
   );
 }

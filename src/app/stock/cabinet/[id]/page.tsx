@@ -1,9 +1,53 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
+import dynamic from 'next/dynamic';
+
 import Header from "../../../../components/Header";
 import Swal from 'sweetalert2';
+
+// Dynamically import Html5Qrcode to avoid SSR issues
+const Html5QrcodePlugin = dynamic(
+  () => import('html5-qrcode').then((mod) => {
+    const { Html5Qrcode } = mod;
+    return function Html5QrcodePlugin({ onScanSuccess, onScanFailure }: {
+      onScanSuccess: (decodedText: string) => void;
+      onScanFailure: (error: any) => void;
+    }) {
+      const qrRef = useRef<InstanceType<typeof Html5Qrcode> | null>(null);
+      const containerId = 'qr-reader' + Math.random().toString(36).substr(2, 9);
+
+      useEffect(() => {
+        const config = { 
+          fps: 10,
+          qrbox: { width: 250, height: 250 },
+          aspectRatio: 1.0
+        };
+        
+        qrRef.current = new Html5Qrcode(containerId);
+        
+        qrRef.current.start(
+          { facingMode: 'environment' },
+          config,
+          onScanSuccess,
+          onScanFailure
+        ).catch((err: any) => {
+          console.error('Failed to start QR scanner', err);
+        });
+
+        return () => {
+          if (qrRef.current && qrRef.current.isScanning) {
+            qrRef.current.stop().catch(console.error);
+          }
+        };
+      }, []);
+
+      return <div id={containerId} className="w-full max-w-md mx-auto" style={{ minHeight: '300px' }} />;
+    };
+  }),
+  { ssr: false, loading: () => <p className="text-center p-4">กำลังโหลดเครื่องสแกน QR Code...</p> }
+);
 
 interface StockRecord {
   date: number;
@@ -35,6 +79,8 @@ export default function CabinetDetailPage() {
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth() + 1);
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
   const [selectedDeleteId, setSelectedDeleteId] = useState<number | null>(null);
+  const [showQRScanner, setShowQRScanner] = useState(false);
+  const [scannedResult, setScannedResult] = useState<string | null>(null);
   
   // Thai month names for display
   const thaiMonths = [
@@ -91,7 +137,7 @@ export default function CabinetDetailPage() {
         if (res.status === 404) {
           setCabinet({
             id: Number(params.id),
-            name: `ตู้ ${params.id}`,
+            name: `Stock ${params.id}`,
             month: currentMonth,
             year: currentYear,
             devices: [],
@@ -256,6 +302,66 @@ export default function CabinetDetailPage() {
     } catch (e) {
       console.error("Failed to update stock:", e);
     }
+  };
+
+  // Handle QR code scan result
+  const handleScanSuccess = (decodedText: string) => {
+    console.log('QR Code scanned:', decodedText);
+    setScannedResult(decodedText);
+    setShowQRScanner(false);
+    
+    // Show the scanned result to the user
+    Swal.fire({
+      title: 'สแกน QR Code สำเร็จ',
+      text: `พบข้อมูล: ${decodedText}`,
+      icon: 'success',
+      confirmButtonText: 'ตกลง',
+      confirmButtonColor: '#3085d6',
+    });
+    
+    // Here you can add logic to handle the scanned data
+    // For example, you might want to parse the result and update the form
+  };
+
+  const handleScanFailure = (error: any) => {
+    console.error('QR Scan Error:', error);
+    
+    // Don't show error if scanner is being closed
+    if (!showQRScanner) return;
+    
+    let errorMessage = 'ไม่สามารถเริ่มต้นกล้องได้';
+    
+    if (error && error.message) {
+      if (error.message.includes('NotAllowedError')) {
+        errorMessage = 'กรุณาอนุญาตการใช้งานกล้อง';
+      } else if (error.message.includes('NotFoundError')) {
+        errorMessage = 'ไม่พบกล้องที่สามารถใช้งานได้';
+      } else if (error.message.includes('NotReadableError')) {
+        errorMessage = 'ไม่สามารถเข้าถึงกล้องได้ อาจมีการใช้งานโดยแอพอื่นอยู่';
+      } else if (error.message.includes('OverconstrainedError')) {
+        errorMessage = 'กล้องไม่รองรับการสแกน';
+      }
+    }
+    
+    Swal.fire({
+      title: 'เกิดข้อผิดพลาด',
+      text: errorMessage,
+      icon: 'error',
+      confirmButtonText: 'ตกลง',
+      confirmButtonColor: '#d33',
+    }).then(() => {
+      setShowQRScanner(false);
+    });
+  };
+
+  const openQRScanner = () => {
+    setShowQRScanner(true);
+  };
+
+  const closeQRScanner = () => {
+    setShowQRScanner(false);
+    // Reset the scanner state
+    setScannedResult(null);
   };
 
   const saveData = async () => {
@@ -514,6 +620,16 @@ export default function CabinetDetailPage() {
               </svg>
               กลับ
             </button>
+            
+            <button 
+              onClick={openQRScanner}
+              className="px-6 py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 flex items-center gap-2"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+              </svg>
+              สแกน QR Code
+            </button>
             {isAdmin && (
               <>
                 <button 
@@ -594,7 +710,74 @@ export default function CabinetDetailPage() {
         </div>
       </div>
 
+      {/* QR Code Scanner Modal */}
+      {showQRScanner && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold text-gray-800">สแกน QR Code</h2>
+              <button 
+                onClick={closeQRScanner}
+                className="text-gray-500 hover:text-gray-700"
+                aria-label="ปิด"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            <div className="border-2 border-dashed border-gray-300 rounded-lg overflow-hidden">
+              <div className="w-full max-w-md mx-auto p-4">
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 bg-gray-50">
+                <div className="relative" style={{ minHeight: '300px' }}>
+                  <Html5QrcodePlugin 
+                    onScanSuccess={handleScanSuccess}
+                    onScanFailure={handleScanFailure}
+                  />
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="border-4 border-dashed border-blue-400 rounded-lg" style={{ width: '250px', height: '250px' }}></div>
+                  </div>
+                </div>
+                <p className="mt-4 text-center text-sm text-gray-600">
+                  นำกล้องไปที่ QR Code เพื่อสแกน
+                </p>
+                <p className="mt-2 text-center text-xs text-red-500">
+                  ตรวจสอบว่าอนุญาตการใช้งานกล้องแล้ว
+                </p>
+              </div>
+              </div>
+            </div>
+            
+            <p className="mt-4 text-center text-gray-600 text-sm">
+              นำกล้องไปที่ QR Code เพื่อสแกน
+            </p>
+            
+            <div className="mt-6 flex justify-center">
+              <button
+                onClick={closeQRScanner}
+                className="px-6 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-medium transition-colors"
+              >
+                ยกเลิก
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
+
       <style jsx>{`
+        @keyframes float {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-5px); }
+        }
+        
+        .floating-text {
+          animation: float 3s ease-in-out infinite;
+          display: inline-block;
+        }
+        
         .idx-col { width: 3rem; }
         .stock-col { width: 4rem; }
         .num-col { width: 2.2rem; }

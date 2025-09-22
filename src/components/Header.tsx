@@ -217,12 +217,11 @@ export default function Header() {
             {/* Brand Section - Enhanced with Check Stock OR gradient */}
             <div className="flex items-center gap-4 select-none">
               <div className="relative group">
-                <div className="absolute inset-0 bg-gradient-to-r from-blue-400 to-purple-500 rounded-2xl blur opacity-20 group-hover:opacity-40 transition-opacity duration-300"></div>
-                <div className="relative w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-blue-50 to-indigo-100 rounded-2xl shadow-lg flex items-center justify-center border-2 border-blue-200/50 hover:border-blue-300 transition-all duration-300 hover:shadow-xl">
+                <div className="relative w-20 h-20 sm:w-24 sm:h-24 flex items-center justify-center">
                   <img
                     src="/ram-logo.jpg"
                     alt="RAM Logo"
-                    className="w-12 h-12 sm:w-16 sm:h-16 object-contain rounded-xl drop-shadow-sm"
+                    className="w-full h-full object-contain"
                   />
                 </div>
               </div>
@@ -230,7 +229,7 @@ export default function Header() {
                 <div className="relative">
                   {/* Main gradient text with Check Stock OR style */}
                   <span className="font-black text-xl sm:text-2xl md:text-3xl leading-tight relative">
-                    <span className="bg-gradient-to-r from-blue-600 via-purple-600 to-blue-600 bg-clip-text text-transparent animate-gradient-x">
+                    <span className="bg-gradient-to-r from-blue-800 via-blue-600 to-blue-400 bg-clip-text text-transparent animate-gradient-x">
                     OR stock management
                     </span>
                   </span>
