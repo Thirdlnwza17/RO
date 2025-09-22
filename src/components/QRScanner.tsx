@@ -53,9 +53,37 @@ export default function QrCodeScanner({
     if (html5QrCodeRef.current && isScanningRef.current) {
       try {
         await html5QrCodeRef.current.stop();
-        await html5QrCodeRef.current.clear();
+        
+        // รอสักครู่ก่อน clear เพื่อให้ DOM อัพเดต
+        setTimeout(() => {
+          try {
+            if (html5QrCodeRef.current) {
+              html5QrCodeRef.current.clear();
+            }
+          } catch (clearErr) {
+            console.warn("Clear scanner warning:", clearErr);
+            // ลองล้าง DOM manually ถ้า clear() ไม่ได้ผล
+            const container = document.getElementById(qrCodeRegionId);
+            if (container) {
+              container.innerHTML = '';
+            }
+          }
+        }, 100);
+        
       } catch (err) {
         console.error("Error stopping scanner:", err);
+        
+        // ถ้า stop() ไม่ได้ผล ลองล้าง DOM และ reset state
+        try {
+          const container = document.getElementById(qrCodeRegionId);
+          if (container) {
+            container.innerHTML = '';
+          }
+        } catch (domErr) {
+          console.warn("DOM cleanup warning:", domErr);
+        }
+      } finally {
+        html5QrCodeRef.current = null;
       }
     }
     isScanningRef.current = false;
@@ -190,10 +218,36 @@ export default function QrCodeScanner({
     }
   };
 
-  // Cleanup
+  // Cleanup - ปรับปรุงให้ปลอดภัยขึ้น
   useEffect(() => {
     return () => {
-      stopScanner();
+      // cleanup เมื่อ component unmount
+      if (html5QrCodeRef.current && isScanningRef.current) {
+        html5QrCodeRef.current.stop()
+          .then(() => {
+            // รอให้ stop เสร็จก่อน clear
+            setTimeout(() => {
+              try {
+                if (html5QrCodeRef.current) {
+                  html5QrCodeRef.current.clear();
+                }
+              } catch (err) {
+                console.warn("Cleanup clear warning:", err);
+              }
+              html5QrCodeRef.current = null;
+            }, 100);
+          })
+          .catch((err) => {
+            console.warn("Cleanup stop warning:", err);
+            // ล้าง DOM manually ถ้าจำเป็น
+            const container = document.getElementById(qrCodeRegionId);
+            if (container) {
+              container.innerHTML = '';
+            }
+            html5QrCodeRef.current = null;
+          });
+      }
+      isScanningRef.current = false;
     };
   }, []);
 
