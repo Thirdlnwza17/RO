@@ -28,6 +28,50 @@ export default function QrCodeScanner({
   }, []);
 
   // ขอสิทธิ์เข้าถึงกล้อง
+  const detectCodeType = (text: string): string => {
+    // URL
+    if (text.startsWith('http://') || text.startsWith('https://')) {
+      return 'URL';
+    }
+    // Email
+    if (text.includes('@') && text.includes('.')) {
+      return 'Email';
+    }
+    // Phone number
+    if (/^\+?[\d\s-()]+$/.test(text) && text.replace(/\D/g, '').length >= 10) {
+      return 'Phone';
+    }
+    // WiFi QR Code
+    if (text.startsWith('WIFI:')) {
+      return 'WiFi';
+    }
+    // Contact (vCard)
+    if (text.startsWith('BEGIN:VCARD') || text.startsWith('MECARD:')) {
+      return 'Contact';
+    }
+    // SMS
+    if (text.startsWith('SMSTO:') || text.startsWith('sms:')) {
+      return 'SMS';
+    }
+    // Geographic location
+    if (text.startsWith('geo:')) {
+      return 'Location';
+    }
+    // Event (Calendar)
+    if (text.startsWith('BEGIN:VEVENT')) {
+      return 'Calendar Event';
+    }
+    // Cryptocurrency
+    if (text.startsWith('bitcoin:') || text.startsWith('ethereum:')) {
+      return 'Cryptocurrency';
+    }
+    // UPC/EAN Barcode (numbers only)
+    if (/^\d{8,14}$/.test(text)) {
+      return 'Product Barcode';
+    }
+    // Plain text
+    return 'Text';
+  };
   const requestCameraPermission = async () => {
     try {
       setIsLoading(true);
@@ -100,6 +144,33 @@ export default function QrCodeScanner({
         fps: 10,
         qrbox: { width: 250, height: 250 },
         aspectRatio: 1.0,
+        supportedScanTypes: [
+          // QR Code formats
+          0, // QR_CODE
+          // Data Matrix
+          1, // DATA_MATRIX
+          // Aztec
+          2, // AZTEC
+          // PDF417
+          3, // PDF_417
+          // MaxiCode
+          4, // MAXI_CODE
+          // 1D Barcodes
+          5, // RSS_14
+          6, // RSS_EXPANDED
+          7, // UPC_A
+          8, // UPC_E
+          9, // UPC_EAN_EXTENSION
+          10, // EAN_13
+          11, // EAN_8
+          12, // CODABAR
+          13, // CODE_39
+          14, // CODE_93
+          15, // CODE_128
+          16, // ITF
+        ],
+        rememberLastUsedCamera: true,
+        showTorchButtonIfSupported: true,
       };
 
       // เริ่มสแกน
@@ -107,7 +178,12 @@ export default function QrCodeScanner({
         { facingMode: "environment" },
         config,
         (decodedText: string) => {
-          console.log("✅ QR Code detected:", decodedText);
+          console.log("✅ QR/Barcode detected:", decodedText);
+          
+          // แยกประเภทของ code ที่ detect ได้
+          const codeType = detectCodeType(decodedText);
+          console.log("📋 Code type:", codeType);
+          
           onScanSuccess(decodedText);
         },
         (errorMessage: string) => {
@@ -216,7 +292,12 @@ export default function QrCodeScanner({
           )}
           {isScanningRef.current && (
             <div className="mt-2 text-center">
-              <p className="text-sm text-gray-600 mb-2">📷 ส่องกล้องไปที่ QR Code</p>
+              <p className="text-sm text-gray-600 mb-2">
+                📷 ส่องกล้องไปที่ QR Code, Barcode หรือ Text
+              </p>
+              <div className="text-xs text-gray-500 mb-2">
+                รองรับ: QR Code, Data Matrix, Aztec, PDF417, UPC, EAN, Code128, Code39
+              </div>
               <button
                 onClick={stopScanner}
                 className="px-3 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600"
