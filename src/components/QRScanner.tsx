@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { Html5Qrcode, CameraDevice } from "html5-qrcode";
 
 interface QrCodeScannerProps {
@@ -15,8 +15,8 @@ export default function QrCodeScanner({
   const qrCodeRegionId = "qr-code-region";
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
   const isScanningRef = useRef(false);
-  const [isReady, setIsReady] = useState(false);
 
+  // เริ่มสแกน QR
   const startScanner = async () => {
     const container = document.getElementById(qrCodeRegionId);
     if (!container) {
@@ -33,7 +33,7 @@ export default function QrCodeScanner({
       const html5QrCode = new Html5Qrcode(qrCodeRegionId);
       html5QrCodeRef.current = html5QrCode;
 
-      // ✅ ดึง list กล้อง
+      // ดึง list กล้อง
       const devices: CameraDevice[] = await Html5Qrcode.getCameras();
       if (!devices || devices.length === 0) {
         console.error("❌ No cameras found");
@@ -85,23 +85,16 @@ export default function QrCodeScanner({
 
   return (
     <div className="flex flex-col items-center">
-      {!isReady ? (
-        <button
-          onClick={() => setIsReady(true)}
-          className="px-4 py-2 bg-blue-500 text-white rounded mt-2"
-        >
-          📷 เปิดกล้องสแกน QR
-        </button>
-      ) : (
-        <>
-          <div id={qrCodeRegionId} className="w-[300px] h-[300px] mt-2" />
-          <p className="mt-2 text-sm text-gray-600">
-            ส่องกล้องไปที่ QR Code
-          </p>
-          {/* เริ่มสแกนเมื่อ isReady = true */}
-          {isReady && startScanner()}
-        </>
-      )}
+      <div id={qrCodeRegionId} className="w-[300px] h-[300px] bg-gray-100 rounded" />
+      <button
+        onClick={startScanner}
+        className="px-4 py-2 bg-blue-500 text-white rounded mt-4"
+      >
+        📷 เปิดกล้องสแกน QR
+      </button>
+      <p className="mt-2 text-sm text-gray-600">
+        ส่องกล้องไปที่ QR Code
+      </p>
     </div>
   );
 }
