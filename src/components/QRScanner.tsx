@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Html5Qrcode, CameraDevice } from "html5-qrcode";
 
 interface QrCodeScannerProps {
@@ -15,9 +15,15 @@ export default function QrCodeScanner({
   const qrCodeRegionId = "qr-code-region";
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
   const isScanningRef = useRef(false);
+  const [isScanning, setIsScanning] = useState(false);
 
-  // เริ่มสแกน QR
   const startScanner = async () => {
+    // ตรวจสอบว่าอุปกรณ์รองรับกล้องไหม
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      alert("📵 อุปกรณ์ของคุณไม่รองรับการสแกน QR หรือเปิดกล้องไม่ได้");
+      return;
+    }
+
     const container = document.getElementById(qrCodeRegionId);
     if (!container) {
       console.error("❌ QR container not found.");
@@ -36,7 +42,7 @@ export default function QrCodeScanner({
       // ดึง list กล้อง
       const devices: CameraDevice[] = await Html5Qrcode.getCameras();
       if (!devices || devices.length === 0) {
-        console.error("❌ No cameras found");
+        alert("❌ ไม่พบกล้องบนอุปกรณ์นี้");
         return;
       }
 
@@ -48,13 +54,15 @@ export default function QrCodeScanner({
       await html5QrCode.start(
         { deviceId: { exact: backCamera.id } },
         config,
-        (decodedText: string) => {
+        (decodedText) => {
           console.log("✅ QR Code detected:", decodedText);
           onScanSuccess(decodedText);
         },
-        (errorMessage: string) => {
-          if (!errorMessage.includes("NotFoundException") &&
-              !errorMessage.includes("IndexSizeError")) {
+        (errorMessage) => {
+          if (
+            !errorMessage.includes("NotFoundException") &&
+            !errorMessage.includes("IndexSizeError")
+          ) {
             console.warn("⚠️ QR Scan Error:", errorMessage);
             onScanFailure?.(errorMessage);
           }
@@ -62,9 +70,13 @@ export default function QrCodeScanner({
       );
 
       isScanningRef.current = true;
+      setIsScanning(true);
       console.log("📷 QR scanner started with camera:", backCamera.label);
     } catch (err) {
-      console.error("❌ Failed to start QR scanner:", err);
+      alert(
+        "❌ ไม่สามารถเปิดกล้องได้ ตรวจสอบ HTTPS / permission ของอุปกรณ์ หรือ Safari iOS ไม่รองรับ"
+      );
+      console.error(err);
     }
   };
 
@@ -72,26 +84,35 @@ export default function QrCodeScanner({
   useEffect(() => {
     return () => {
       if (html5QrCodeRef.current) {
-        html5QrCodeRef.current.stop()
+        html5QrCodeRef.current
+          .stop()
           .then(() => html5QrCodeRef.current?.clear())
           .finally(() => {
             isScanningRef.current = false;
+            setIsScanning(false);
             console.log("🛑 QR scanner stopped.");
           })
-          .catch(err => console.error("❌ Stop scanner error:", err));
+          .catch((err) => console.error("❌ Stop scanner error:", err));
       }
     };
   }, []);
 
   return (
     <div className="flex flex-col items-center">
-      <div id={qrCodeRegionId} className="w-[300px] h-[300px] bg-gray-100 rounded" />
-      <button
-        onClick={startScanner}
-        className="px-4 py-2 bg-blue-500 text-white rounded mt-4"
-      >
-        📷 เปิดกล้องสแกน QR
-      </button>
+      <div
+        id={qrCodeRegionId}
+        className={`w-[300px] h-[300px] rounded ${
+          isScanning ? "" : "bg-gray-100"
+        }`}
+      />
+      {!isScanning && (
+        <button
+          onClick={startScanner}
+          className="px-4 py-2 bg-blue-500 text-white rounded mt-4"
+        >
+          📷 เปิดกล้องสแกน QR
+        </button>
+      )}
       <p className="mt-2 text-sm text-gray-600">
         ส่องกล้องไปที่ QR Code
       </p>
