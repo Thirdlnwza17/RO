@@ -11,9 +11,10 @@ export default function QrCodeScanner({
   onScanSuccess,
   onScanFailure,
 }: QrCodeScannerProps) {
-  const qrCodeRegionId = "qr-code-region";
+  const qrCodeRegionId = useRef(`qr-code-region-${Math.random().toString(36).substr(2, 9)}`);
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
   const isScanningRef = useRef(false);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [error, setError] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
@@ -54,33 +55,40 @@ export default function QrCodeScanner({
       try {
         await html5QrCodeRef.current.stop();
         
-        // รอสักครู่ก่อน clear เพื่อให้ DOM อัพเดต
-        setTimeout(() => {
+        // รอให้ scanner หยุดสมบูรณ์
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
+        // ล้าง DOM ก่อนที่ React จะ re-render
+        if (containerRef.current) {
+          // เก็บ children ที่เป็น React elements ไว้
+          const reactElements = Array.from(containerRef.current.children).filter(
+            child => child.getAttribute('data-react-element') === 'true'
+          );
+          
+          // ล้างทั้งหมด
+          containerRef.current.innerHTML = '';
+          
+          // ใส่ React elements กลับคืน
+          reactElements.forEach(element => {
+            containerRef.current?.appendChild(element);
+          });
+        }
+        
+        // เรียก clear หลังจากล้าง DOM แล้ว
+        if (html5QrCodeRef.current) {
           try {
-            if (html5QrCodeRef.current) {
-              html5QrCodeRef.current.clear();
-            }
+            html5QrCodeRef.current.clear();
           } catch (clearErr) {
-            console.warn("Clear scanner warning:", clearErr);
-            // ลองล้าง DOM manually ถ้า clear() ไม่ได้ผล
-            const container = document.getElementById(qrCodeRegionId);
-            if (container) {
-              container.innerHTML = '';
-            }
+            console.warn("Clear warning (handled):", clearErr);
           }
-        }, 100);
+        }
         
       } catch (err) {
         console.error("Error stopping scanner:", err);
         
-        // ถ้า stop() ไม่ได้ผล ลองล้าง DOM และ reset state
-        try {
-          const container = document.getElementById(qrCodeRegionId);
-          if (container) {
-            container.innerHTML = '';
-          }
-        } catch (domErr) {
-          console.warn("DOM cleanup warning:", domErr);
+        // Force cleanup DOM ถ้ามีปัญหา
+        if (containerRef.current) {
+          containerRef.current.innerHTML = '';
         }
       } finally {
         html5QrCodeRef.current = null;
@@ -111,7 +119,7 @@ export default function QrCodeScanner({
       setError("📱 iOS แนะนำให้เปิดใน Safari Browser สำหรับประสิทธิภาพที่ดีที่สุด");
     }
 
-    const container = document.getElementById(qrCodeRegionId);
+    const container = containerRef.current;
     if (!container) {
       console.error("❌ QR container not found.");
       setIsLoading(false);
@@ -133,7 +141,7 @@ export default function QrCodeScanner({
         return;
       }
 
-      const html5QrCode = new Html5Qrcode(qrCodeRegionId);
+      const html5QrCode = new Html5Qrcode(qrCodeRegionId.current);
       html5QrCodeRef.current = html5QrCode;
 
       // ดึง list กล้อง
@@ -218,36 +226,36 @@ export default function QrCodeScanner({
     }
   };
 
-  // Cleanup - ปรับปรุงให้ปลอดภัยขึ้น
+  // Cleanup - ใช้ AbortController เพื่อป้องกัน race conditions
   useEffect(() => {
+    const abortController = new AbortController();
+    
     return () => {
-      // cleanup เมื่อ component unmount
-      if (html5QrCodeRef.current && isScanningRef.current) {
+      // Signal cleanup
+      abortController.abort();
+      
+      if (html5QrCodeRef.current && isScanningRef.current && !abortController.signal.aborted) {
         html5QrCodeRef.current.stop()
           .then(() => {
-            // รอให้ stop เสร็จก่อน clear
-            setTimeout(() => {
-              try {
-                if (html5QrCodeRef.current) {
-                  html5QrCodeRef.current.clear();
+            if (!abortController.signal.aborted) {
+              // ล้าง DOM อย่างปลอดภัย
+              if (containerRef.current) {
+                try {
+                  containerRef.current.innerHTML = '';
+                } catch (err) {
+                  console.warn("DOM cleanup warning:", err);
                 }
-              } catch (err) {
-                console.warn("Cleanup clear warning:", err);
               }
-              html5QrCodeRef.current = null;
-            }, 100);
+            }
           })
           .catch((err) => {
-            console.warn("Cleanup stop warning:", err);
-            // ล้าง DOM manually ถ้าจำเป็น
-            const container = document.getElementById(qrCodeRegionId);
-            if (container) {
-              container.innerHTML = '';
-            }
+            console.warn("Cleanup error:", err);
+          })
+          .finally(() => {
             html5QrCodeRef.current = null;
+            isScanningRef.current = false;
           });
       }
-      isScanningRef.current = false;
     };
   }, []);
 
@@ -269,21 +277,22 @@ export default function QrCodeScanner({
 
       {/* QR Code Region */}
       <div
-        id={qrCodeRegionId}
+        ref={containerRef}
+        id={qrCodeRegionId.current}
         className={`w-[300px] h-[300px] rounded-lg border-2 border-dashed ${
           isScanning 
             ? "border-green-400 bg-black" 
             : "border-gray-300 bg-gray-100"
-        } flex items-center justify-center`}
+        } flex items-center justify-center relative`}
       >
         {!isScanning && !isLoading && (
-          <div className="text-gray-500 text-center">
+          <div className="text-gray-500 text-center" data-react-element="true">
             <div className="text-4xl mb-2">📷</div>
             <div className="text-sm">กดปุ่มเพื่อเริ่มสแกน</div>
           </div>
         )}
         {isLoading && (
-          <div className="text-gray-500 text-center">
+          <div className="text-gray-500 text-center" data-react-element="true">
             <div className="text-2xl mb-2">⏳</div>
             <div className="text-sm">กำลังเปิดกล้อง...</div>
           </div>
