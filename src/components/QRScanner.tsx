@@ -1,11 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import {
-  Html5Qrcode,
-  Html5QrcodeSupportedFormats,
-  Html5QrcodeResult
-} from "html5-qrcode";
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 
 interface ScannerConfig {
   fps: number;
@@ -16,13 +12,6 @@ interface ScannerConfig {
   };
   rememberLastUsedCamera?: boolean;
   showTorchButtonIfSupported?: boolean;
-}
-
-interface HighlightBox {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
 }
 
 interface QrCodeScannerProps {
@@ -36,7 +25,7 @@ export default function QrCodeScanner({ onScanSuccess, onScanFailure }: QrCodeSc
   const [isClient, setIsClient] = useState(false);
   const [permissionGranted, setPermissionGranted] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [highlightBox, setHighlightBox] = useState<HighlightBox | null>(null);
+  const [highlightBox, setHighlightBox] = useState<{ x: number, y: number, width: number, height: number } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => { setIsClient(true); }, []);
@@ -49,17 +38,18 @@ export default function QrCodeScanner({ onScanSuccess, onScanFailure }: QrCodeSc
       stream.getTracks().forEach(track => track.stop());
       setPermissionGranted(true);
     } catch (err: unknown) {
-      const errorObj = err instanceof Error ? err : new Error(String(err));
-      setError("ไม่สามารถเข้าถึงกล้องได้: " + errorObj.message);
-      setPermissionGranted(false);
-    } finally {
-      setIsLoading(false);
-    }
+        const error = err instanceof Error ? err : new Error(String(err));
+        setError("ไม่สามารถเข้าถึงกล้องได้: " + error.message);
+        setPermissionGranted(false);
+      } finally {
+        setIsLoading(false);
+      }
   };
 
   const detectCodeType = (text: string): string => {
     if (text.startsWith("http")) return "URL";
-    return "Barcode/QR";
+    if (/^\d{8,14}$/.test(text)) return "Barcode";
+    return "QR/Other";
   };
 
   const startScanner = async () => {
@@ -70,27 +60,39 @@ export default function QrCodeScanner({ onScanSuccess, onScanFailure }: QrCodeSc
       const scanner = new Html5QrcodeModule.Html5Qrcode(qrRegionId, true);
       html5QrCodeRef.current = scanner;
 
-      // Get all supported formats from the enum
-      const allFormats = Object.values(Html5QrcodeSupportedFormats)
-        .filter((format): format is Html5QrcodeSupportedFormats => typeof format === 'number');
-      
       const config: ScannerConfig = {
         fps: 15,
         qrbox: { width: 300, height: 200 },
-        formatsToSupport: allFormats,
+        // ครอบคลุมทุกชนิดของ QR/Barcode
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.QR_CODE,
+          Html5QrcodeSupportedFormats.AZTEC,
+          Html5QrcodeSupportedFormats.CODABAR,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.CODE_93,
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.DATA_MATRIX,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.ITF,
+          Html5QrcodeSupportedFormats.MAXICODE,
+          Html5QrcodeSupportedFormats.PDF_417,
+          Html5QrcodeSupportedFormats.RSS_14,
+          Html5QrcodeSupportedFormats.RSS_EXPANDED,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E,
+          Html5QrcodeSupportedFormats.UPC_EAN_EXTENSION
+        ],
         experimentalFeatures: { useBarCodeDetectorIfSupported: true },
         rememberLastUsedCamera: true,
         showTorchButtonIfSupported: true
       };
-      
-      console.log('Supported formats:', allFormats.map(f => Html5QrcodeSupportedFormats[f]));
 
       await scanner.start(
         { facingMode: "environment" },
         config,
-        (decodedText: string, result: Html5QrcodeResult) => {
+        (decodedText, result) => {
           try {
-            // Show a centered highlight box
             const container = document.getElementById(qrRegionId);
             if (container) {
               const rect = container.getBoundingClientRect();
@@ -99,24 +101,24 @@ export default function QrCodeScanner({ onScanSuccess, onScanFailure }: QrCodeSc
                 x: (rect.width - size) / 2,
                 y: (rect.height - size) / 2,
                 width: size,
-                height: size
+                height: size,
               });
             }
 
             const type = detectCodeType(decodedText);
             onScanSuccess(decodedText, type);
-          } catch (err: unknown) {
+          } catch (err) {
             console.error("Processing error:", err);
           }
         },
-        (errMsg: string) => {
+        (errMsg) => {
           if (!errMsg.includes("NotFoundException")) onScanFailure?.(errMsg);
         }
       );
     } catch (err: unknown) {
-      const errorObj = err instanceof Error ? err : new Error(String(err));
-      setError("เริ่มสแกนไม่สำเร็จ: " + errorObj.message);
-    }
+        const error = err instanceof Error ? err : new Error(String(err));
+        setError("เริ่มสแกนไม่สำเร็จ: " + error.message);
+      }
   };
 
   const stopScanner = async () => {
