@@ -11,13 +11,16 @@ export default function QrCodeScanner({
   onScanSuccess,
   onScanFailure,
 }: QrCodeScannerProps) {
-  const qrCodeRegionId = useRef(`qr-code-region-${Math.random().toString(36).substr(2, 9)}`);
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
   const isScanningRef = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const qrRegionRef = useRef<HTMLDivElement>(null);
+  const mountedRef = useRef(true);
+  
   const [isScanning, setIsScanning] = useState(false);
   const [error, setError] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
+  const [qrCodeRegionId] = useState(() => `qr-region-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
 
   // ตรวจสอบ iOS
   const isIOS = () => {
@@ -32,16 +35,14 @@ export default function QrCodeScanner({
 
   const requestCameraPermission = async (): Promise<boolean> => {
     try {
-      // สำหรับ iOS ต้อง request permission อย่างชัดเจน
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { 
-          facingMode: { ideal: "environment" }, // กล้องหลัง
+          facingMode: { ideal: "environment" },
           width: { ideal: 640 },
           height: { ideal: 480 }
         } 
       });
       
-      // ปิด stream ทันที เพื่อเตรียมให้ html5-qrcode ใช้งาน
       stream.getTracks().forEach(track => track.stop());
       return true;
     } catch (error) {
@@ -50,57 +51,59 @@ export default function QrCodeScanner({
     }
   };
 
+  const forceCleanup = () => {
+    if (qrRegionRef.current) {
+      // สร้าง div ใหม่เพื่อแทนที่ div เก่าที่ถูก html5-qrcode modify
+      const newDiv = document.createElement('div');
+      newDiv.id = qrCodeRegionId;
+      newDiv.className = qrRegionRef.current.className;
+      
+      const parent = qrRegionRef.current.parentNode;
+      if (parent) {
+        parent.replaceChild(newDiv, qrRegionRef.current);
+        qrRegionRef.current = newDiv;
+      }
+    }
+  };
+
   const stopScanner = async () => {
+    if (!mountedRef.current) return;
+    
     if (html5QrCodeRef.current && isScanningRef.current) {
       try {
+        // หยุด scanner ก่อน
         await html5QrCodeRef.current.stop();
         
         // รอให้ scanner หยุดสมบูรณ์
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await new Promise(resolve => setTimeout(resolve, 300));
         
-        // ล้าง DOM ก่อนที่ React จะ re-render
-        if (containerRef.current) {
-          // เก็บ children ที่เป็น React elements ไว้
-          const reactElements = Array.from(containerRef.current.children).filter(
-            child => child.getAttribute('data-react-element') === 'true'
-          );
-          
-          // ล้างทั้งหมด
-          containerRef.current.innerHTML = '';
-          
-          // ใส่ React elements กลับคืน
-          reactElements.forEach(element => {
-            containerRef.current?.appendChild(element);
-          });
-        }
-        
-        // เรียก clear หลังจากล้าง DOM แล้ว
-        if (html5QrCodeRef.current) {
+        if (mountedRef.current) {
           try {
             html5QrCodeRef.current.clear();
           } catch (clearErr) {
-            console.warn("Clear warning (handled):", clearErr);
+            console.warn("Clear error (will force cleanup):", clearErr);
+            forceCleanup();
           }
         }
         
       } catch (err) {
-        console.error("Error stopping scanner:", err);
-        
-        // Force cleanup DOM ถ้ามีปัญหา
-        if (containerRef.current) {
-          containerRef.current.innerHTML = '';
-        }
+        console.error("Stop scanner error:", err);
+        forceCleanup();
       } finally {
         html5QrCodeRef.current = null;
       }
     }
-    isScanningRef.current = false;
-    setIsScanning(false);
-    console.log("🛑 QR scanner stopped.");
+    
+    if (mountedRef.current) {
+      isScanningRef.current = false;
+      setIsScanning(false);
+      console.log("🛑 QR scanner stopped.");
+    }
   };
 
   const startScanner = async () => {
-    // รีเซ็ต error state
+    if (!mountedRef.current) return;
+    
     setError("");
     setIsLoading(true);
 
@@ -114,20 +117,19 @@ export default function QrCodeScanner({
       return;
     }
 
-    // สำหรับ iOS แนะนำให้ใช้ Safari
     if (isIOS() && !isSafari()) {
       setError("📱 iOS แนะนำให้เปิดใน Safari Browser สำหรับประสิทธิภาพที่ดีที่สุด");
     }
 
-    const container = containerRef.current;
-    if (!container) {
-      console.error("❌ QR container not found.");
+    if (isScanningRef.current) {
+      console.log("⚠️ Scanner already running, skip.");
       setIsLoading(false);
       return;
     }
 
-    if (isScanningRef.current) {
-      console.log("⚠️ Scanner already running, skip.");
+    // ตรวจสอบ container
+    if (!qrRegionRef.current) {
+      console.error("❌ QR container ref not found.");
       setIsLoading(false);
       return;
     }
@@ -141,7 +143,8 @@ export default function QrCodeScanner({
         return;
       }
 
-      const html5QrCode = new Html5Qrcode(qrCodeRegionId.current);
+      // สร้าง scanner instance ใหม่
+      const html5QrCode = new Html5Qrcode(qrCodeRegionId);
       html5QrCodeRef.current = html5QrCode;
 
       // ดึง list กล้อง
@@ -152,11 +155,10 @@ export default function QrCodeScanner({
         return;
       }
 
-      // เลือกกล้อง - สำหรับ iOS ให้ลองหาจาก environment ก่อน
-      let selectedCamera = devices[0]; // default
+      // เลือกกล้อง
+      let selectedCamera = devices[0];
       
       if (isIOS()) {
-        // iOS มักจะมี label ที่แตกต่าง
         const backCamera = devices.find(d => 
           d.label.toLowerCase().includes("back") || 
           d.label.toLowerCase().includes("environment") ||
@@ -168,28 +170,30 @@ export default function QrCodeScanner({
         if (backCamera) selectedCamera = backCamera;
       }
 
-      // Config สำหรับ iOS
+      // Config
       const config = {
-        fps: isIOS() ? 5 : 10, // iOS ใช้ fps ต่ำกว่า
+        fps: isIOS() ? 5 : 10,
         qrbox: { width: isIOS() ? 200 : 250, height: isIOS() ? 200 : 250 },
-        aspectRatio: 1.0, // สำหรับ iOS
-        disableFlip: false, // อนุญาตให้ flip ได้
+        aspectRatio: 1.0,
+        disableFlip: false,
       };
 
-      // เริ่มสแกน - ใช้แค่ deviceId เท่านั้น
+      // เริ่มสแกน
       await html5QrCode.start(
         { deviceId: { exact: selectedCamera.id } },
         config,
         (decodedText) => {
-          console.log("✅ QR Code detected:", decodedText);
-          onScanSuccess(decodedText);
+          if (mountedRef.current) {
+            console.log("✅ QR Code detected:", decodedText);
+            onScanSuccess(decodedText);
+          }
         },
         (errorMessage) => {
-          // กรองข้อผิดพลาดที่ไม่สำคัญ
           if (
             !errorMessage.includes("NotFoundException") &&
             !errorMessage.includes("IndexSizeError") &&
-            !errorMessage.includes("No MultiFormat Readers")
+            !errorMessage.includes("No MultiFormat Readers") &&
+            mountedRef.current
           ) {
             console.warn("⚠️ QR Scan Error:", errorMessage);
             onScanFailure?.(errorMessage);
@@ -197,12 +201,17 @@ export default function QrCodeScanner({
         }
       );
 
-      isScanningRef.current = true;
-      setIsScanning(true);
-      setIsLoading(false);
-      console.log("📷 QR scanner started with camera:", selectedCamera.label);
+      if (mountedRef.current) {
+        isScanningRef.current = true;
+        setIsScanning(true);
+        setIsLoading(false);
+        console.log("📷 QR scanner started with camera:", selectedCamera.label);
+      }
     } catch (err: unknown) {
+      if (!mountedRef.current) return;
+      
       setIsLoading(false);
+      const errorMsg = err instanceof Error ? err.message : String(err);
       let errorMessage = "❌ ไม่สามารถเปิดกล้องได้";
       
       if (isIOS()) {
@@ -210,8 +219,6 @@ export default function QrCodeScanner({
       } else {
         errorMessage += " (ตรวจสอบ HTTPS และ permission ของเบราว์เซอร์)";
       }
-      
-      const errorMsg = err instanceof Error ? err.message : String(err);
       
       if (errorMsg.includes("Permission denied")) {
         errorMessage = "❌ ไม่ได้รับอนุญาตให้ใช้งานกล้อง กรุณาอนุญาตในการตั้งค่าเบราว์เซอร์";
@@ -226,31 +233,15 @@ export default function QrCodeScanner({
     }
   };
 
-  // Cleanup - ใช้ AbortController เพื่อป้องกัน race conditions
+  // Mount/unmount tracking
   useEffect(() => {
-    const abortController = new AbortController();
-    
+    mountedRef.current = true;
     return () => {
-      // Signal cleanup
-      abortController.abort();
-      
-      if (html5QrCodeRef.current && isScanningRef.current && !abortController.signal.aborted) {
+      mountedRef.current = false;
+      // Immediate cleanup
+      if (html5QrCodeRef.current && isScanningRef.current) {
         html5QrCodeRef.current.stop()
-          .then(() => {
-            if (!abortController.signal.aborted) {
-              // ล้าง DOM อย่างปลอดภัย
-              if (containerRef.current) {
-                try {
-                  containerRef.current.innerHTML = '';
-                } catch (err) {
-                  console.warn("DOM cleanup warning:", err);
-                }
-              }
-            }
-          })
-          .catch((err) => {
-            console.warn("Cleanup error:", err);
-          })
+          .catch(() => {})
           .finally(() => {
             html5QrCodeRef.current = null;
             isScanningRef.current = false;
@@ -258,6 +249,20 @@ export default function QrCodeScanner({
       }
     };
   }, []);
+
+  // แยก QR Region เป็น component ย่อย
+  const QRRegion = () => (
+    <div
+      ref={qrRegionRef}
+      id={qrCodeRegionId}
+      className={`w-[300px] h-[300px] rounded-lg border-2 border-dashed ${
+        isScanning 
+          ? "border-green-400 bg-black" 
+          : "border-gray-300 bg-gray-100"
+      } flex items-center justify-center relative overflow-hidden`}
+      style={{ isolation: 'isolate' }} // CSS isolation
+    />
+  );
 
   return (
     <div className="flex flex-col items-center max-w-md mx-auto p-4">
@@ -275,26 +280,26 @@ export default function QrCodeScanner({
         </div>
       )}
 
-      {/* QR Code Region */}
-      <div
-        ref={containerRef}
-        id={qrCodeRegionId.current}
-        className={`w-[300px] h-[300px] rounded-lg border-2 border-dashed ${
-          isScanning 
-            ? "border-green-400 bg-black" 
-            : "border-gray-300 bg-gray-100"
-        } flex items-center justify-center relative`}
-      >
+      {/* Container wrapper */}
+      <div ref={containerRef} className="relative">
+        <QRRegion />
+        
+        {/* Overlay content */}
         {!isScanning && !isLoading && (
-          <div className="text-gray-500 text-center" data-react-element="true">
-            <div className="text-4xl mb-2">📷</div>
-            <div className="text-sm">กดปุ่มเพื่อเริ่มสแกน</div>
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="text-gray-500 text-center">
+              <div className="text-4xl mb-2">📷</div>
+              <div className="text-sm">กดปุ่มเพื่อเริ่มสแกน</div>
+            </div>
           </div>
         )}
+        
         {isLoading && (
-          <div className="text-gray-500 text-center" data-react-element="true">
-            <div className="text-2xl mb-2">⏳</div>
-            <div className="text-sm">กำลังเปิดกล้อง...</div>
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="text-gray-500 text-center">
+              <div className="text-2xl mb-2">⏳</div>
+              <div className="text-sm">กำลังเปิดกล้อง...</div>
+            </div>
           </div>
         )}
       </div>
