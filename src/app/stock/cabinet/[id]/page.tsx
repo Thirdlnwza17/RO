@@ -13,7 +13,7 @@ const Html5QrcodePlugin = dynamic(
     const { Html5Qrcode } = mod;
     return function Html5QrcodePlugin({ onScanSuccess, onScanFailure }: {
       onScanSuccess: (decodedText: string) => void;
-      onScanFailure: (error: any) => void;
+      onScanFailure: (error: unknown) => void;
     }) {
       const qrRef = useRef<InstanceType<typeof Html5Qrcode> | null>(null);
       const containerId = 'qr-reader' + Math.random().toString(36).substr(2, 9);
@@ -32,7 +32,7 @@ const Html5QrcodePlugin = dynamic(
           config,
           onScanSuccess,
           onScanFailure
-        ).catch((err: any) => {
+        ).catch((err: unknown) => {
           console.error('Failed to start QR scanner', err);
         });
 
@@ -323,7 +323,12 @@ export default function CabinetDetailPage() {
     // For example, you might want to parse the result and update the form
   };
 
-  const handleScanFailure = (error: any) => {
+  // Type guard to check if error has a message property
+  const isErrorWithMessage = (error: unknown): error is { message: string } => {
+    return typeof error === 'object' && error !== null && 'message' in error && typeof (error as { message: unknown }).message === 'string';
+  };
+
+  const handleScanFailure = (error: unknown) => {
     console.error('QR Scan Error:', error);
     
     // Don't show error if scanner is being closed
@@ -331,7 +336,7 @@ export default function CabinetDetailPage() {
     
     let errorMessage = 'ไม่สามารถเริ่มต้นกล้องได้';
     
-    if (error && error.message) {
+    if (isErrorWithMessage(error)) {
       if (error.message.includes('NotAllowedError')) {
         errorMessage = 'กรุณาอนุญาตการใช้งานกล้อง';
       } else if (error.message.includes('NotFoundError')) {
