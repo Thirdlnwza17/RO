@@ -1,9 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
+import {
+  Html5Qrcode,
+  Html5QrcodeSupportedFormats,
+  Html5QrcodeResult
+} from "html5-qrcode";
 
-// Define the config type since it's not exported from the package
 interface ScannerConfig {
   fps: number;
   qrbox: { width: number; height: number };
@@ -13,6 +16,13 @@ interface ScannerConfig {
   };
   rememberLastUsedCamera?: boolean;
   showTorchButtonIfSupported?: boolean;
+}
+
+interface HighlightBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 interface QrCodeScannerProps {
@@ -26,7 +36,7 @@ export default function QrCodeScanner({ onScanSuccess, onScanFailure }: QrCodeSc
   const [isClient, setIsClient] = useState(false);
   const [permissionGranted, setPermissionGranted] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [highlightBox, setHighlightBox] = useState<{ x: number, y: number, width: number, height: number } | null>(null);
+  const [highlightBox, setHighlightBox] = useState<HighlightBox | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => { setIsClient(true); }, []);
@@ -39,19 +49,17 @@ export default function QrCodeScanner({ onScanSuccess, onScanFailure }: QrCodeSc
       stream.getTracks().forEach(track => track.stop());
       setPermissionGranted(true);
     } catch (err: unknown) {
-        const error = err instanceof Error ? err : new Error(String(err));
-        setError("ไม่สามารถเข้าถึงกล้องได้: " + error.message);
-        setPermissionGranted(false);
-      } finally {
-        setIsLoading(false);
-      }
-      
+      const errorObj = err instanceof Error ? err : new Error(String(err));
+      setError("ไม่สามารถเข้าถึงกล้องได้: " + errorObj.message);
+      setPermissionGranted(false);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const detectCodeType = (text: string): string => {
     if (text.startsWith("http")) return "URL";
-    if (/^\d{8,14}$/.test(text)) return "Barcode";
-    return "QR/Other";
+    return "Barcode/QR";
   };
 
   const startScanner = async () => {
@@ -62,56 +70,53 @@ export default function QrCodeScanner({ onScanSuccess, onScanFailure }: QrCodeSc
       const scanner = new Html5QrcodeModule.Html5Qrcode(qrRegionId, true);
       html5QrCodeRef.current = scanner;
 
+      // Get all supported formats from the enum
+      const allFormats = Object.values(Html5QrcodeSupportedFormats)
+        .filter((format): format is Html5QrcodeSupportedFormats => typeof format === 'number');
+      
       const config: ScannerConfig = {
         fps: 15,
         qrbox: { width: 300, height: 200 },
-        formatsToSupport: [
-          Html5QrcodeSupportedFormats.QR_CODE,
-          Html5QrcodeSupportedFormats.CODE_128,
-          Html5QrcodeSupportedFormats.CODE_39,
-          Html5QrcodeSupportedFormats.EAN_13,
-          Html5QrcodeSupportedFormats.EAN_8,
-          Html5QrcodeSupportedFormats.UPC_A,
-          Html5QrcodeSupportedFormats.UPC_E
-        ],
+        formatsToSupport: allFormats,
         experimentalFeatures: { useBarCodeDetectorIfSupported: true },
         rememberLastUsedCamera: true,
         showTorchButtonIfSupported: true
       };
+      
+      console.log('Supported formats:', allFormats.map(f => Html5QrcodeSupportedFormats[f]));
 
       await scanner.start(
         { facingMode: "environment" },
         config,
-        (decodedText, result) => {
+        (decodedText: string, result: Html5QrcodeResult) => {
           try {
-            // Show a centered highlight box since we can't get exact points
+            // Show a centered highlight box
             const container = document.getElementById(qrRegionId);
             if (container) {
               const rect = container.getBoundingClientRect();
-              const size = Math.min(rect.width, rect.height) * 0.7; // 70% of container size
+              const size = Math.min(rect.width, rect.height) * 0.7;
               setHighlightBox({
                 x: (rect.width - size) / 2,
                 y: (rect.height - size) / 2,
                 width: size,
-                height: size,
+                height: size
               });
             }
 
             const type = detectCodeType(decodedText);
             onScanSuccess(decodedText, type);
-          } catch (err) {
+          } catch (err: unknown) {
             console.error("Processing error:", err);
           }
         },
-        (errMsg) => {
+        (errMsg: string) => {
           if (!errMsg.includes("NotFoundException")) onScanFailure?.(errMsg);
         }
       );
     } catch (err: unknown) {
-        const error = err instanceof Error ? err : new Error(String(err));
-        setError("เริ่มสแกนไม่สำเร็จ: " + error.message);
-      }
-      
+      const errorObj = err instanceof Error ? err : new Error(String(err));
+      setError("เริ่มสแกนไม่สำเร็จ: " + errorObj.message);
+    }
   };
 
   const stopScanner = async () => {
