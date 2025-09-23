@@ -99,7 +99,7 @@ export default function QrCodeScanner({
       codeReader.hints = hints;
       
       // Optimize scanning speed
-      codeReader.timeBetweenDecodingAttempts = 300;
+      codeReader.timeBetweenDecodingAttempts = 50;
       
       codeReaderRef.current = codeReader;
     }
