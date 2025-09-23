@@ -1,39 +1,145 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import dynamic from "next/dynamic";
-import { Html5QrcodeSupportedFormats, Html5Qrcode } from "html5-qrcode";
-
-interface ScannerConfig {
-  fps: number;
-  qrbox: { width: number; height: number };
-  formatsToSupport?: Html5QrcodeSupportedFormats[];
-  experimentalFeatures?: {
-    useBarCodeDetectorIfSupported?: boolean;
-  };
-  rememberLastUsedCamera?: boolean;
-  showTorchButtonIfSupported?: boolean;
-}
+import { useEffect, useRef, useState, useCallback } from "react";
+import {
+  BrowserMultiFormatReader,
+  Result,
+  BarcodeFormat,
+  DecodeHintType,
+  NotFoundException
+} from "@zxing/library";
 
 interface QrCodeScannerProps {
   onScanSuccess: (decodedText: string, type: string) => void;
   onScanFailure?: (error: string) => void;
 }
 
-export default function QrCodeScanner({ onScanSuccess, onScanFailure }: QrCodeScannerProps) {
-  const qrRegionId = "qr-code-region";
-  const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
-  const [isClient, setIsClient] = useState(false);
+interface HighlightBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+type ScanError = Error | NotFoundException;
+
+export default function QrCodeScanner({
+  onScanSuccess,
+  onScanFailure
+}: QrCodeScannerProps) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const [permissionGranted, setPermissionGranted] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [highlightBox, setHighlightBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const [highlightBox, setHighlightBox] = useState<HighlightBox | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
 
-  useEffect(() => setIsClient(true), []);
+  const codeReaderRef = useRef<BrowserMultiFormatReader | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  const detectCodeType = useCallback((text: string): string => {
+    // URL detection
+    if (text.match(/^https?:\/\//i)) return "URL";
+    if (text.match(/^www\./i)) return "URL";
+    
+    // Email detection
+    if (text.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) return "Email";
+    
+    // Phone number detection
+    if (text.match(/^[\+]?[\d\s\-\(\)]{8,}$/)) return "Phone";
+    
+    // UPC/EAN Barcode detection (8-14 digits)
+    if (text.match(/^\d{8,14}$/)) return "Barcode (UPC/EAN)";
+    
+    // WiFi QR format
+    if (text.startsWith("WIFI:")) return "WiFi Config";
+    
+    // VCard format
+    if (text.startsWith("BEGIN:VCARD")) return "Contact Card";
+    
+    // SMS format
+    if (text.startsWith("SMS:") || text.startsWith("SMSTO:")) return "SMS";
+    
+    // Calendar event
+    if (text.startsWith("BEGIN:VEVENT")) return "Calendar Event";
+    
+    // Location/GPS
+    if (text.match(/^geo:/i)) return "Location";
+    
+    // Default for QR codes
+    return "QR Code";
+  }, []);
+
+  const initializeCodeReader = useCallback(() => {
+    if (!codeReaderRef.current) {
+      const codeReader = new BrowserMultiFormatReader();
+      
+      // Configure to support all barcode formats
+      const hints = new Map();
+      hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+        BarcodeFormat.QR_CODE,
+        BarcodeFormat.DATA_MATRIX,
+        BarcodeFormat.UPC_A,
+        BarcodeFormat.UPC_E,
+        BarcodeFormat.EAN_8,
+        BarcodeFormat.EAN_13,
+        BarcodeFormat.CODE_39,
+        BarcodeFormat.CODE_93,
+        BarcodeFormat.CODE_128,
+        BarcodeFormat.ITF,
+        BarcodeFormat.CODABAR,
+        BarcodeFormat.RSS_14,
+        BarcodeFormat.RSS_EXPANDED,
+        BarcodeFormat.AZTEC,
+        BarcodeFormat.PDF_417,
+        BarcodeFormat.MAXICODE
+      ]);
+      
+      hints.set(DecodeHintType.TRY_HARDER, true);
+      codeReader.hints = hints;
+      
+      // Optimize scanning speed
+      codeReader.timeBetweenDecodingAttempts = 300;
+      
+      codeReaderRef.current = codeReader;
+    }
+    return codeReaderRef.current;
+  }, []);
+
+  const stopScanner = useCallback(async () => {
+    console.log('Stopping scanner...');
+    
+    setIsScanning(false);
+    
+    // Stop the code reader
+    if (codeReaderRef.current) {
+      try {
+        await codeReaderRef.current.reset();
+      } catch (resetError) {
+        console.warn('Error resetting code reader:', resetError);
+      }
+    }
+    
+    // Stop video stream
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => {
+        track.stop();
+      });
+      streamRef.current = null;
+    }
+    
+    // Clear video element
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    
+    setHighlightBox(null);
+    console.log('Scanner stopped successfully');
+  }, []);
 
   const requestCameraPermission = async () => {
     if (!navigator?.mediaDevices?.getUserMedia) {
-      setError("กล้องไม่สามารถใช้งานบน environment นี้ได้");
+      setError("กล้องไม่สามารถใช้งานในสภาพแวดล้อมนี้ได้ (ต้องใช้ HTTPS หรือ localhost)");
       return;
     }
 
@@ -41,144 +147,320 @@ export default function QrCodeScanner({ onScanSuccess, onScanFailure }: QrCodeSc
     setError(null);
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+      // Test camera access with fallback constraints
+      const constraints: MediaStreamConstraints = {
+        video: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1280, min: 480 },
+          height: { ideal: 720, min: 360 },
+          frameRate: { ideal: 30, min: 10 }
+        },
+        audio: false
+      };
+      
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+      } catch (primaryError) {
+        console.warn('Primary camera constraints failed, trying fallback:', primaryError);
+        // Fallback to basic constraints
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: false
+        });
+      }
+      
+      // Test the stream briefly then stop it
+      if (stream.getVideoTracks().length === 0) {
+        throw new Error('ไม่พบกล้องที่พร้อมใช้งาน');
+      }
+      
       stream.getTracks().forEach(track => track.stop());
       setPermissionGranted(true);
-    } catch (err: unknown) {
-      const errorObj = err instanceof Error ? err : new Error(String(err));
-      setError("ไม่สามารถเข้าถึงกล้องได้: " + errorObj.message);
+      
+    } catch (err) {
+      console.error('Camera access error:', err);
+      let errorMessage = "ไม่สามารถเข้าถึงกล้องได้";
+      
+      if (err instanceof Error) {
+        if (err.name === 'NotAllowedError') {
+          errorMessage = "กรุณาอนุญาตให้เข้าถึงกล้องในเบราว์เซอร์";
+        } else if (err.name === 'NotFoundError') {
+          errorMessage = "ไม่พบกล้องในอุปกรณ์นี้";
+        } else if (err.name === 'NotSupportedError') {
+          errorMessage = "เบราว์เซอร์ไม่รองรับการใช้งานกล้อง";
+        } else if (err.name === 'NotReadableError') {
+          errorMessage = "กล้องกำลังถูกใช้งานโดยแอปพลิเคชันอื่น";
+        } else {
+          errorMessage += ": " + err.message;
+        }
+      }
+      
+      setError(errorMessage);
       setPermissionGranted(false);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const detectCodeType = (text: string): string => {
-    if (text.startsWith("http")) return "URL";
-    if (/^\d{8,14}$/.test(text)) return "Barcode";
-    return "QR/Other";
-  };
-
-  const startScanner = async () => {
-    if (!isClient) return;
+  const startScanner = useCallback(async () => {
+    if (!permissionGranted || !videoRef.current || isScanning) return;
 
     try {
-      const Html5QrcodeModule = await import("html5-qrcode");
-      const scanner = new Html5QrcodeModule.Html5Qrcode(qrRegionId, true);
-      html5QrCodeRef.current = scanner;
+      setIsScanning(true);
+      setError(null);
+      
+      const videoElement = videoRef.current;
+      const codeReader = initializeCodeReader();
 
-      const config: ScannerConfig = {
-        fps: 15,
-        qrbox: { width: 300, height: 200 },
-        formatsToSupport: [
-          Html5QrcodeSupportedFormats.QR_CODE,
-          Html5QrcodeSupportedFormats.AZTEC,
-          Html5QrcodeSupportedFormats.CODABAR,
-          Html5QrcodeSupportedFormats.CODE_39,
-          Html5QrcodeSupportedFormats.CODE_93,
-          Html5QrcodeSupportedFormats.CODE_128,
-          Html5QrcodeSupportedFormats.DATA_MATRIX,
-          Html5QrcodeSupportedFormats.EAN_8,
-          Html5QrcodeSupportedFormats.EAN_13,
-          Html5QrcodeSupportedFormats.ITF,
-          Html5QrcodeSupportedFormats.MAXICODE,
-          Html5QrcodeSupportedFormats.PDF_417,
-          Html5QrcodeSupportedFormats.RSS_14,
-          Html5QrcodeSupportedFormats.RSS_EXPANDED,
-          Html5QrcodeSupportedFormats.UPC_A,
-          Html5QrcodeSupportedFormats.UPC_E,
-          Html5QrcodeSupportedFormats.UPC_EAN_EXTENSION
-        ],
-        experimentalFeatures: { useBarCodeDetectorIfSupported: true },
-        rememberLastUsedCamera: true,
-        showTorchButtonIfSupported: true
+      // Get video stream with progressive fallback
+      const getVideoStream = async (): Promise<MediaStream> => {
+        const constraints = [
+          // High quality with back camera
+          {
+            video: {
+              facingMode: { exact: 'environment' },
+              width: { ideal: 1920, min: 640 },
+              height: { ideal: 1080, min: 480 },
+              frameRate: { ideal: 30, min: 15 }
+            }
+          },
+          // Medium quality with back camera
+          {
+            video: {
+              facingMode: 'environment',
+              width: { ideal: 1280, min: 640 },
+              height: { ideal: 720, min: 480 },
+              frameRate: { ideal: 30, min: 15 }
+            }
+          },
+          // Basic quality any camera
+          {
+            video: {
+              width: { ideal: 640, min: 320 },
+              height: { ideal: 480, min: 240 }
+            }
+          },
+          // Minimal constraints
+          { video: true }
+        ];
+
+        for (const constraint of constraints) {
+          try {
+            return await navigator.mediaDevices.getUserMedia(constraint);
+          } catch (err) {
+            console.warn('Failed constraint, trying next:', constraint, err);
+          }
+        }
+        throw new Error('ไม่สามารถเปิดกล้องได้ด้วยการตั้งค่าใดๆ');
       };
 
-      await scanner.start(
-        { facingMode: "environment" },
-        config,
-        (decodedText: string, result) => {
-          try {
-            const container = document.getElementById(qrRegionId);
-            if (container) {
-              const rect = container.getBoundingClientRect();
-              const size = Math.min(rect.width, rect.height) * 0.7;
-              setHighlightBox({
-                x: (rect.width - size) / 2,
-                y: (rect.height - size) / 2,
-                width: size,
-                height: size,
-              });
-            }
+      const stream = await getVideoStream();
+      streamRef.current = stream;
+      videoElement.srcObject = stream;
+      
+      await new Promise<void>((resolve, reject) => {
+        videoElement.onloadedmetadata = () => resolve();
+        videoElement.onerror = () => reject(new Error('Video loading failed'));
+        setTimeout(() => reject(new Error('Video loading timeout')), 5000);
+      });
+      
+      await videoElement.play();
 
-            const type = detectCodeType(decodedText);
-            onScanSuccess(decodedText, type);
-          } catch (err: unknown) {
-            console.error("Processing error:", err);
+      // Start decoding
+      await codeReader.decodeFromVideoDevice(
+        null, // Let browser choose device
+        videoElement,
+        (result: Result | undefined, error?: ScanError) => {
+          if (result) {
+            try {
+              const text = result.getText();
+              if (text && text.trim()) {
+                console.log('Scan successful:', text);
+                const type = detectCodeType(text);
+                
+                // Set highlight box based on result points if available
+                const resultPoints = result.getResultPoints();
+                if (resultPoints && resultPoints.length >= 2 && videoElement) {
+                  const videoRect = videoElement.getBoundingClientRect();
+                  const scaleX = videoRect.width / videoElement.videoWidth;
+                  const scaleY = videoRect.height / videoElement.videoHeight;
+                  
+                  const points = resultPoints.map(point => ({
+                    x: point.getX() * scaleX,
+                    y: point.getY() * scaleY
+                  }));
+                  
+                  const minX = Math.min(...points.map(p => p.x));
+                  const maxX = Math.max(...points.map(p => p.x));
+                  const minY = Math.min(...points.map(p => p.y));
+                  const maxY = Math.max(...points.map(p => p.y));
+                  
+                  setHighlightBox({
+                    x: Math.max(0, minX - 10),
+                    y: Math.max(0, minY - 10),
+                    width: Math.min(videoRect.width, maxX - minX + 20),
+                    height: Math.min(videoRect.height, maxY - minY + 20)
+                  });
+                } else {
+                  // Fallback highlight box (center of video)
+                  const width = videoElement.clientWidth * 0.7;
+                  const height = videoElement.clientHeight * 0.7;
+                  setHighlightBox({
+                    x: (videoElement.clientWidth - width) / 2,
+                    y: (videoElement.clientHeight - height) / 2,
+                    width,
+                    height
+                  });
+                }
+                
+                onScanSuccess(text.trim(), type);
+                
+                // Auto-stop after successful scan
+                setTimeout(() => {
+                  stopScanner();
+                }, 1000);
+                
+              } else {
+                console.warn('Empty scan result');
+              }
+            } catch (parseError) {
+              console.error('Error processing scan result:', parseError);
+              onScanFailure?.("เกิดข้อผิดพลาดในการประมวลผลผลลัพธ์การสแกน");
+            }
+          } else if (error && !(error instanceof NotFoundException)) {
+            console.warn('Scan error:', error);
+            onScanFailure?.(error.message || "เกิดข้อผิดพลาดในการสแกน");
           }
-        },
-        (errMsg: string) => {
-          if (!errMsg.includes("NotFoundException")) onScanFailure?.(errMsg);
         }
       );
-    } catch (err: unknown) {
-      const errorObj = err instanceof Error ? err : new Error(String(err));
-      setError("เริ่มสแกนไม่สำเร็จ: " + errorObj.message);
+
+    } catch (err) {
+      console.error('Scanner start error:', err);
+      let errorMessage = "ไม่สามารถเริ่มการสแกนได้";
+      
+      if (err instanceof Error) {
+        errorMessage += ": " + err.message;
+      }
+      
+      setError(errorMessage);
+      setIsScanning(false);
     }
-  };
+  }, [permissionGranted, isScanning, initializeCodeReader, detectCodeType, onScanSuccess, onScanFailure, stopScanner]);
 
-  const stopScanner = async () => {
-    if (html5QrCodeRef.current) {
-      await html5QrCodeRef.current.stop();
-      html5QrCodeRef.current.clear();
-      html5QrCodeRef.current = null;
-      setHighlightBox(null);
-    }
-  };
-
-  useEffect(() => () => { stopScanner(); }, []);
-
+  // Effect to start scanner when permission is granted
   useEffect(() => {
-    if (permissionGranted) {
-      const timer = setTimeout(() => startScanner(), 300);
-      return () => clearTimeout(timer);
-    }
-  }, [permissionGranted]);
+    if (permissionGranted && !isScanning) {
+      const timer = setTimeout(() => {
+        startScanner();
+      }, 500);
 
-  if (!isClient) return <div>Loading...</div>;
+      return () => {
+        clearTimeout(timer);
+      };
+    }
+  }, [permissionGranted, startScanner, isScanning]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopScanner();
+      if (codeReaderRef.current) {
+        codeReaderRef.current = null;
+      }
+    };
+  }, [stopScanner]);
 
   return (
     <div className="flex flex-col items-center relative">
       {!permissionGranted ? (
-        <div className="w-[300px] h-[300px] bg-blue-50 border border-blue-200 flex flex-col items-center justify-center rounded-lg">
-          <p className="text-blue-600 mb-2">📷 เข้าถึงกล้อง</p>
+        <div className="w-[300px] h-[300px] bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200 flex flex-col items-center justify-center rounded-xl shadow-lg">
+          <div className="text-4xl mb-4">📱</div>
+          <p className="text-blue-700 mb-4 text-center font-medium">
+            ต้องการเข้าถึงกล้องเพื่อสแกน QR Code
+          </p>
           <button
             onClick={requestCameraPermission}
-            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
+            className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium shadow-md"
             disabled={isLoading}
           >
-            {isLoading ? "กำลังขอสิทธิ์..." : "เปิดใช้งานกล้อง"}
+            {isLoading ? (
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                กำลังขอสิทธิ์...
+              </div>
+            ) : (
+              "เปิดใช้งานกล้อง"
+            )}
           </button>
         </div>
       ) : (
-        <>
-          <div id={qrRegionId} className="w-[100%] max-w-[400px] h-[250px] rounded-lg overflow-hidden relative" />
+        <div className="relative w-full max-w-[400px] h-[300px] rounded-xl overflow-hidden shadow-lg bg-black">
+          <video
+            ref={videoRef}
+            className="w-full h-full object-cover"
+            muted
+            playsInline
+            autoPlay
+          />
+          
+          {/* Scanning overlay */}
+          <div className="absolute inset-0 border-2 border-green-400 rounded-xl pointer-events-none">
+            <div className="absolute inset-4 border border-green-400 border-dashed rounded-lg">
+              <div className="absolute top-0 left-0 w-6 h-6 border-l-2 border-t-2 border-green-400"></div>
+              <div className="absolute top-0 right-0 w-6 h-6 border-r-2 border-t-2 border-green-400"></div>
+              <div className="absolute bottom-0 left-0 w-6 h-6 border-l-2 border-b-2 border-green-400"></div>
+              <div className="absolute bottom-0 right-0 w-6 h-6 border-r-2 border-b-2 border-green-400"></div>
+            </div>
+          </div>
+
+          {/* Highlight successful detection */}
           {highlightBox && (
             <div
               style={{
                 position: "absolute",
-                border: "2px solid lime",
+                border: "3px solid #10b981",
+                borderRadius: "8px",
                 left: highlightBox.x,
                 top: highlightBox.y,
                 width: highlightBox.width,
                 height: highlightBox.height,
-                pointerEvents: "none"
+                pointerEvents: "none",
+                boxShadow: "0 0 20px rgba(16, 185, 129, 0.5)",
+                animation: "pulse 1s ease-in-out"
               }}
             />
           )}
-        </>
+          
+          {/* Scanning indicator */}
+          {isScanning && (
+            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-black bg-opacity-60 text-white px-3 py-1 rounded-full text-sm">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                กำลังสแกน...
+              </div>
+            </div>
+          )}
+        </div>
       )}
-      {error && <p className="text-red-600 mt-2">{error}</p>}
+
+      {error && (
+        <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg max-w-[400px] w-full">
+          <p className="text-red-700 text-sm">{error}</p>
+          <button
+            onClick={requestCameraPermission}
+            className="mt-2 text-red-600 text-sm underline hover:no-underline"
+          >
+            ลองใหม่อีกครั้ง
+          </button>
+        </div>
+      )}
+
+      {/* Instructions */}
+      <div className="mt-4 text-center text-gray-600 text-sm max-w-[400px]">
+        <p>วางโค้ดหรือบาร์โค้ดในกรอบเพื่อสแกน</p>
+        <p className="text-xs mt-1">รองรับ: QR Code, Barcode, Data Matrix และอื่นๆ</p>
+      </div>
     </div>
   );
 }
