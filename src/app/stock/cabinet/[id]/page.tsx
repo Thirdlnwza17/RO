@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
 import dynamic from 'next/dynamic';
+import { isWithinAllowedTime, getNextAllowedTime } from "@/utils/timeCheck";
 
 import Header from "../../../../components/Header";
 import Swal from 'sweetalert2';
@@ -175,6 +176,23 @@ export default function CabinetDetailPage() {
   const deleteSelectedDevice = async () => {
     if (!cabinet || selectedDeleteId == null) return;
     
+    // Check if user is admin or if current time is within allowed time slots
+    if (!isAdmin && !isWithinAllowedTime()) {
+      const nextTime = getNextAllowedTime();
+      await Swal.fire({
+        icon: 'warning',
+        title: 'ไม่อนุญาตให้ลบอุปกรณ์',
+        html: `สามารถลบอุปกรณ์ได้เฉพาะในช่วงเวลา:<br/>
+               - 08:00 - 12:00 น.<br/>
+               - 13:00 - 16:00 น.<br/>
+               - 17:00 - 20:00 น.<br/><br/>
+               ครั้งถัดไปที่สามารถลบได้: <strong>${nextTime} น.</strong>`,
+        confirmButtonText: 'ตกลง',
+        confirmButtonColor: '#3085d6',
+      });
+      return;
+    }
+    
     const device = cabinet.devices.find((d) => d.id === selectedDeleteId);
     const deviceName = device?.name || 'อุปกรณ์นี้';
     
@@ -230,8 +248,25 @@ export default function CabinetDetailPage() {
     }
   };
 
-  const addNewDevice = () => {
+  const addNewDevice = async () => {
     if (!cabinet) return;
+    
+    // Check if user is admin or if current time is within allowed time slots
+    if (!isAdmin && !isWithinAllowedTime()) {
+      const nextTime = getNextAllowedTime();
+      await Swal.fire({
+        icon: 'warning',
+        title: 'ไม่อนุญาตให้เพิ่มอุปกรณ์',
+        html: `สามารถเพิ่มอุปกรณ์ได้เฉพาะในช่วงเวลา:<br/>
+               - 08:00 - 12:00 น.<br/>
+               - 13:00 - 16:00 น.<br/>
+               - 17:00 - 20:00 น.<br/><br/>
+               ครั้งถัดไปที่สามารถเพิ่มได้: <strong>${nextTime} น.</strong>`,
+        confirmButtonText: 'ตกลง',
+        confirmButtonColor: '#3085d6',
+      });
+      return;
+    }
     
     const newDevice: Device = {
       id: cabinet.devices.length > 0 ? Math.max(...cabinet.devices.map(d => d.id)) + 1 : 1,
@@ -248,6 +283,23 @@ export default function CabinetDetailPage() {
   };
 
   const updateDeviceName = async (deviceId: number, name: string) => {
+    // Check if user is admin or if current time is within allowed time slots
+    if (!isAdmin && !isWithinAllowedTime()) {
+      const nextTime = getNextAllowedTime();
+      await Swal.fire({
+        icon: 'warning',
+        title: 'ไม่อนุญาตให้แก้ไขชื่ออุปกรณ์',
+        html: `สามารถแก้ไขชื่ออุปกรณ์ได้เฉพาะในช่วงเวลา:<br/>
+               - 08:00 - 12:00 น.<br/>
+               - 13:00 - 16:00 น.<br/>
+               - 17:00 - 20:00 น.<br/><br/>
+               ครั้งถัดไปที่สามารถแก้ไขได้: <strong>${nextTime} น.</strong>`,
+        confirmButtonText: 'ตกลง',
+        confirmButtonColor: '#3085d6',
+      });
+      return;
+    }
+
     try {
       await fetch("/api/stock", {
         method: "PUT",
@@ -262,10 +314,34 @@ export default function CabinetDetailPage() {
       });
     } catch (e) {
       console.error("Failed to update device name:", e);
+      await Swal.fire({
+        icon: 'error',
+        title: 'เกิดข้อผิดพลาด',
+        text: 'ไม่สามารถอัปเดตชื่ออุปกรณ์ได้',
+        confirmButtonText: 'ตกลง',
+        confirmButtonColor: '#d33',
+      });
     }
   };
 
   const updateDailyStock = async (deviceId: number, day: number, stock: number) => {
+    // Check if user is admin or if current time is within allowed time slots
+    if (!isAdmin && !isWithinAllowedTime()) {
+      const nextTime = getNextAllowedTime();
+      await Swal.fire({
+        icon: 'warning',
+        title: 'ไม่อนุญาตให้แก้ไขข้อมูล',
+        html: `สามารถแก้ไขข้อมูลได้เฉพาะในช่วงเวลา:<br/>
+               - 08:00 - 12:00 น.<br/>
+               - 13:00 - 16:00 น.<br/>
+               - 17:00 - 20:00 น.<br/><br/>
+               ครั้งถัดไปที่สามารถแก้ไขได้: <strong>${nextTime} น.</strong>`,
+        confirmButtonText: 'ตกลง',
+        confirmButtonColor: '#3085d6',
+      });
+      return;
+    }
+
     try {
       await fetch("/api/stock", {
         method: "PUT",
@@ -281,6 +357,13 @@ export default function CabinetDetailPage() {
       });
     } catch (e) {
       console.error("Failed to update stock:", e);
+      await Swal.fire({
+        icon: 'error',
+        title: 'เกิดข้อผิดพลาด',
+        text: 'ไม่สามารถอัปเดตข้อมูลได้',
+        confirmButtonText: 'ตกลง',
+        confirmButtonColor: '#d33',
+      });
     }
   };
 
@@ -364,6 +447,23 @@ export default function CabinetDetailPage() {
 
   const saveData = async () => {
     if (!cabinet) return;
+    
+    // Check if user is admin or if current time is within allowed time slots
+    if (!isAdmin && !isWithinAllowedTime()) {
+      const nextTime = getNextAllowedTime();
+      await Swal.fire({
+        icon: 'warning',
+        title: 'ไม่อนุญาตให้บันทึกข้อมูล',
+        html: `สามารถบันทึกข้อมูลได้เฉพาะในช่วงเวลา:<br/>
+               - 08:00 - 12:00 น.<br/>
+               - 13:00 - 16:00 น.<br/>
+               - 17:00 - 20:00 น.<br/><br/>
+               ครั้งถัดไปที่สามารถบันทึกได้: <strong>${nextTime} น.</strong>`,
+        confirmButtonText: 'ตกลง',
+        confirmButtonColor: '#3085d6',
+      });
+      return;
+    }
     
     // Show loading
     Swal.fire({
@@ -626,7 +726,7 @@ export default function CabinetDetailPage() {
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
               </svg>
-              สแกน QR Code
+              สแกน BarCode
             </button>
             {isAdmin && (
               <>

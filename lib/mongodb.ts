@@ -12,16 +12,16 @@ const options = {
     strict: true,
     deprecationErrors: true,
   },
-  maxPoolSize: 10, // Maximum number of connections in the connection pool
-  connectTimeoutMS: 10000, // Time to wait for a connection to be established
-  socketTimeoutMS: 45000, // Time to wait for a response
+  maxPoolSize: 10, 
+  connectTimeoutMS: 10000, 
+  socketTimeoutMS: 45000, 
 };
 
 let client;
 let clientPromise: Promise<MongoClient>;
 
 if (process.env.NODE_ENV === 'development') {
-  // In development mode, use a global variable to preserve the connection across hot-reloads
+ 
   const globalWithMongo = global as typeof globalThis & {
     _mongoClientPromise?: Promise<MongoClient>;
   };

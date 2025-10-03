@@ -177,24 +177,9 @@ export default function StockPage() {
           <div className="text-center mb-6">
             <h1 className="text-4xl font-bold mb-2">
               <div className="flex justify-center space-x-1">
-                {"Let's Manage".split('').map((letter, index) => (
-                  <motion.span
-                    key={index}
-                    className="inline-block bg-gradient-to-r from-blue-800 via-blue-600 to-blue-400 bg-clip-text text-transparent"
-                    animate={{
-                      y: [0, -10, 0],
-                    }}
-                    transition={{
-                      duration: 1.5,
-                      repeat: Infinity,
-                      repeatType: "loop",
-                      delay: index * 0.3,
-                      ease: "easeInOut",
-                    }}
-                  >
-                    {letter === ' ' ? '\u00A0' : letter}
-                  </motion.span>
-                ))}
+                <span className="bg-gradient-to-r from-blue-800 via-blue-600 to-blue-400 bg-clip-text text-transparent">
+                  Let's Manage
+                </span>
               </div>
             </h1>
             <p className="text-gray-600">เลือกStockที่ต้องการดูข้อมูล</p>
@@ -359,7 +344,14 @@ export default function StockPage() {
                              }}>
                           <div className="text-white/80 text-sm mb-1 font-mono">อัปเดตล่าสุด</div>
                           <div className="text-white font-medium font-mono">
-                            {cab?.lastUpdated ? new Date(cab.lastUpdated).toLocaleDateString("th-TH") : "-"}
+                            {cab?.lastUpdated ? (
+                              <>
+                                {new Date(cab.lastUpdated).toLocaleDateString("th-TH")}
+                                <span className="text-white/70 ml-2">
+                                  {new Date(cab.lastUpdated).toLocaleTimeString("th-TH", {hour: '2-digit', minute: '2-digit'})}
+                                </span>
+                              </>
+                            ) : "-"}
                           </div>
                           {cab?.lastUpdatedBy && (
                             <div className="text-white/70 text-xs font-mono mt-1">

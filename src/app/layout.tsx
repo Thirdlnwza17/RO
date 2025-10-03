@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import BubbleBackground from "../components/BubbleBackground";
+import CloudBackground from "../components/CloudBackground";
 import { IBM_Plex_Sans_Thai } from "next/font/google"
 
 const ibmPlexSansThai = IBM_Plex_Sans_Thai({
@@ -37,7 +37,7 @@ export default function RootLayout({
         className={`${ibmPlexSansThai.className} ${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         {/* Background animation rendered behind all content */}
-        <BubbleBackground />
+        <CloudBackground />
         {children}
       </body>
     </html>

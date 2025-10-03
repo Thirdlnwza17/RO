@@ -95,11 +95,15 @@ export default function QrCodeScanner({
         BarcodeFormat.MAXICODE
       ]);
       
+      // Enhanced detection settings for better performance
       hints.set(DecodeHintType.TRY_HARDER, true);
+      hints.set(DecodeHintType.ASSUME_GS1, false); // Don't assume GS1 format
+      hints.set(DecodeHintType.CHARACTER_SET, 'UTF-8');
+      
       codeReader.hints = hints;
       
-      // Optimize scanning speed
-      codeReader.timeBetweenDecodingAttempts = 50;
+      // Optimize scanning speed - reduce delay between attempts
+      codeReader.timeBetweenDecodingAttempts = 25; // Faster scanning
       
       codeReaderRef.current = codeReader;
     }
@@ -213,32 +217,33 @@ export default function QrCodeScanner({
       const videoElement = videoRef.current;
       const codeReader = initializeCodeReader();
 
-      // Get video stream with progressive fallback
+      // Get video stream with progressive fallback - optimized for barcode scanning
       const getVideoStream = async (): Promise<MediaStream> => {
         const constraints = [
-          // High quality with back camera
+          // High quality with back camera - optimized for barcode scanning
           {
             video: {
               facingMode: { exact: 'environment' },
-              width: { ideal: 1920, min: 640 },
-              height: { ideal: 1080, min: 480 },
-              frameRate: { ideal: 30, min: 15 }
+              width: { ideal: 1280, min: 640 },
+              height: { ideal: 720, min: 480 },
+              frameRate: { ideal: 60, min: 30 } // Higher frame rate for faster detection
             }
           },
-          // Medium quality with back camera
+          // Medium quality with back camera - balanced performance
           {
             video: {
               facingMode: 'environment',
-              width: { ideal: 1280, min: 640 },
+              width: { ideal: 960, min: 640 },
               height: { ideal: 720, min: 480 },
-              frameRate: { ideal: 30, min: 15 }
+              frameRate: { ideal: 60, min: 30 }
             }
           },
           // Basic quality any camera
           {
             video: {
               width: { ideal: 640, min: 320 },
-              height: { ideal: 480, min: 240 }
+              height: { ideal: 480, min: 240 },
+              frameRate: { ideal: 30, min: 15 }
             }
           },
           // Minimal constraints
@@ -267,7 +272,7 @@ export default function QrCodeScanner({
       
       await videoElement.play();
 
-      // Start decoding
+      // Start decoding with enhanced performance
       await codeReader.decodeFromVideoDevice(
         null, // Let browser choose device
         videoElement,
@@ -316,10 +321,10 @@ export default function QrCodeScanner({
                 
                 onScanSuccess(text.trim(), type);
                 
-                // Auto-stop after successful scan
+                // Auto-stop after successful scan - faster response
                 setTimeout(() => {
                   stopScanner();
-                }, 1000);
+                }, 500); // Reduced from 1000ms to 500ms for faster response
                 
               } else {
                 console.warn('Empty scan result');
@@ -329,8 +334,11 @@ export default function QrCodeScanner({
               onScanFailure?.("เกิดข้อผิดพลาดในการประมวลผลผลลัพธ์การสแกน");
             }
           } else if (error && !(error instanceof NotFoundException)) {
-            console.warn('Scan error:', error);
-            onScanFailure?.(error.message || "เกิดข้อผิดพลาดในการสแกน");
+            // Only log actual errors, not normal "not found" cases
+            if (error.message && !error.message.includes('No MultiFormat Readers')) {
+              console.warn('Scan error:', error);
+            }
+            // Don't call onScanFailure for normal NotFoundException to avoid spam
           }
         }
       );
@@ -348,12 +356,12 @@ export default function QrCodeScanner({
     }
   }, [permissionGranted, isScanning, initializeCodeReader, detectCodeType, onScanSuccess, onScanFailure, stopScanner]);
 
-  // Effect to start scanner when permission is granted
+  // Effect to start scanner when permission is granted - faster startup
   useEffect(() => {
     if (permissionGranted && !isScanning) {
       const timer = setTimeout(() => {
         startScanner();
-      }, 500);
+      }, 200); // Reduced from 500ms to 200ms for faster startup
 
       return () => {
         clearTimeout(timer);

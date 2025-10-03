@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { isWithinAllowedTime } from "@/utils/timeCheck";
 
 interface DbUser {
   _id?: string;
@@ -74,22 +75,25 @@ export default function Header() {
   const [timeStr, setTimeStr] = useState<string>("");
   const [currentDate, setCurrentDate] = useState<string>("");
 
-  // real-time clock (Thai locale) - Enhanced with date
+  // real-time clock (Thai locale) - Using time slots from timeCheck.ts
   useEffect(() => {
     const formatNow = () => {
       const now = new Date();
-      const time = now.toLocaleString("th-TH", {
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: false,
-      });
+      const hours = now.getHours();
+      const minutes = now.getMinutes();
+      const seconds = now.getSeconds();
+      
+      // Format time with leading zeros
+      const formatNum = (num: number) => num.toString().padStart(2, '0');
+      const time = `${formatNum(hours)}:${formatNum(minutes)}:${formatNum(seconds)}`;
+      
       const date = now.toLocaleDateString("th-TH", {
         weekday: "long",
         year: "numeric",
         month: "long",
         day: "numeric",
       });
+      
       return { time, date };
     };
     
@@ -246,7 +250,7 @@ export default function Header() {
 
             {/* Enhanced Time Display */}
             <div className="hidden sm:flex flex-col items-center justify-center bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl px-4 py-2 shadow-inner border border-blue-100">
-              <div className="text-lg md:text-xl font-mono font-bold text-blue-800 tracking-wider tabular-nums">
+              <div className={`text-lg md:text-xl font-mono font-bold tracking-wider tabular-nums transition-colors duration-1000 ${isWithinAllowedTime() ? 'text-blue-400' : 'text-red-600'}`}>
                 {timeStr}
               </div>
               <div className="text-xs text-gray-600 font-medium mt-1 text-center leading-tight">
@@ -256,7 +260,7 @@ export default function Header() {
 
             {/* Mobile Time Display */}
             <div className="sm:hidden flex flex-col items-center">
-              <div className="text-sm font-mono font-bold text-blue-800 tracking-wide tabular-nums">
+              <div className={`text-sm font-mono font-bold tracking-wide tabular-nums transition-colors duration-1000 ${isWithinAllowedTime() ? 'text-blue-400' : 'text-red-600'}`}>
                 {timeStr}
               </div>
               <div className="text-xs text-gray-500 font-medium">
