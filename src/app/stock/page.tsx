@@ -178,7 +178,7 @@ export default function StockPage() {
             <h1 className="text-4xl font-bold mb-2">
               <div className="flex justify-center space-x-1">
                 <span className="bg-gradient-to-r from-blue-800 via-blue-600 to-blue-400 bg-clip-text text-transparent">
-                  Let's Manage
+                  Let&apos;s Manage
                 </span>
               </div>
             </h1>
