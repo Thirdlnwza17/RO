@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState} from "react";
 import { useRouter, useParams } from "next/navigation";
 import dynamic from 'next/dynamic';
 import { isWithinAllowedTime, getNextAllowedTime } from "@/utils/timeCheck";
-
 import Header from "../../../../components/Header";
 import Swal from 'sweetalert2';
 
@@ -24,7 +23,7 @@ const QRScanner = dynamic(
             </div>
           </div>
         </div>
-        <p className="mt-4 text-gray-600">กำลังโหลดเครื่องสแกน QR Code...</p>
+        <p className="mt-4 text-gray-600">กำลังโหลดเครื่องสแกน BarCode...</p>
       </div>
     )
   }
@@ -629,20 +628,27 @@ export default function CabinetDetailPage() {
                             type="text"
                             value={device.name}
                             onChange={(e) => {
-                              const newName = e.target.value;
-                              setCabinet((prev) =>
-                                prev
-                                  ? {
-                                      ...prev,
-                                      devices: prev.devices.map((d) =>
-                                        d.id === device.id ? { ...d, name: newName } : d
-                                      ),
-                                    }
-                                  : prev
-                              );
-                              updateDeviceName(device.id, newName);
+                              if (isAdmin) {
+                                const newName = e.target.value;
+                                setCabinet((prev) =>
+                                  prev
+                                    ? {
+                                        ...prev,
+                                        devices: prev.devices.map((d) =>
+                                          d.id === device.id ? { ...d, name: newName } : d
+                                        ),
+                                      }
+                                    : prev
+                                );
+                                updateDeviceName(device.id, newName);
+                              }
                             }}
-                            className="w-full py-1 px-2 rounded border-0 bg-transparent focus:bg-white focus:shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-300 transition-all"
+                            disabled={!isAdmin}
+                            className={`w-full py-1 px-2 rounded border-0 focus:shadow-sm focus:outline-none focus:ring-2 transition-all ${
+                              isAdmin 
+                                ? 'bg-transparent focus:bg-white focus:ring-blue-300' 
+                                : 'bg-gray-100 text-gray-500 cursor-not-allowed'
+                            }`}
                             placeholder="ชื่ออุปกรณ์"
                           />
                         </td>
@@ -651,20 +657,27 @@ export default function CabinetDetailPage() {
                             type="number"
                             value={device.initialStock === 0 ? "" : device.initialStock}
                             onChange={(e) => {
-                              const val = parseInt(e.target.value || "0");
-                              setCabinet((prev) =>
-                                prev
-                                  ? {
-                                      ...prev,
-                                      devices: prev.devices.map((d) =>
-                                        d.id === device.id ? { ...d, initialStock: val } : d
-                                      ),
-                                    }
-                                  : prev
-                              );
-                              updateInitialStock(device.id, val);
+                              if (isAdmin) {
+                                const val = parseInt(e.target.value || "0");
+                                setCabinet((prev) =>
+                                  prev
+                                    ? {
+                                        ...prev,
+                                        devices: prev.devices.map((d) =>
+                                          d.id === device.id ? { ...d, initialStock: val } : d
+                                        ),
+                                      }
+                                    : prev
+                                );
+                                updateInitialStock(device.id, val);
+                              }
                             }}
-                            className="w-full text-center py-1 px-1 rounded border-0 bg-transparent focus:bg-white focus:shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-300 transition-all"
+                            disabled={!isAdmin}
+                            className={`w-full text-center py-1 px-1 rounded border-0 focus:shadow-sm focus:outline-none focus:ring-2 transition-all ${
+                              isAdmin 
+                                ? 'bg-transparent focus:bg-white focus:ring-blue-300' 
+                                : 'bg-gray-100 text-gray-500 cursor-not-allowed'
+                            }`}
                             placeholder=""
                           />
                         </td>
@@ -694,7 +707,12 @@ export default function CabinetDetailPage() {
                                 );
                                 updateDailyStock(device.id, record.date, val);
                               }}
-                              className="w-full text-center py-1 px-0.5 border-0 bg-transparent focus:bg-white focus:shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-300 transition-all text-xs"
+                              disabled={!isAdmin && !isWithinAllowedTime()}
+                              className={`w-full text-center py-1 px-0.5 border-0 focus:shadow-sm focus:outline-none focus:ring-1 transition-all text-xs ${
+                                isAdmin || isWithinAllowedTime()
+                                  ? 'bg-transparent focus:bg-white focus:ring-blue-300'
+                                  : 'bg-gray-100 text-gray-500 cursor-not-allowed'
+                              }`}
                               placeholder=""
                             />
                           </td>
@@ -836,7 +854,7 @@ export default function CabinetDetailPage() {
                 </div>
               </div>
               <p className="mt-4 text-center text-sm text-gray-600">
-                นำกล้องไปที่ QR Code เพื่อสแกน
+                นำกล้องไปที่ Barcode เพื่อสแกน
               </p>
               <p className="mt-2 text-center text-xs text-red-500">
                 ตรวจสอบว่าอนุญาตการใช้งานกล้องแล้ว
@@ -844,7 +862,7 @@ export default function CabinetDetailPage() {
             </div>
             
             <p className="mt-4 text-center text-gray-600 text-sm">
-              นำกล้องไปที่ QR Code เพื่อสแกน
+              นำกล้องไปที่ Barcode เพื่อสแกน
             </p>
             
             <div className="mt-6 flex justify-center">

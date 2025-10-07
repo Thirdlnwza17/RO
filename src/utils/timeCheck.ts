@@ -1,8 +1,8 @@
-// Allowed time slots in 24-hour format
+
 const ALLOWED_TIME_SLOTS = [
-  { start: 8, end: 12 },   // 8:00 - 12:00
-  { start: 13, end: 16 },  // 13:00 - 16:00
-  { start: 17, end: 20 }   // 17:00 - 20:00
+  { start: 8, end: 12 },   
+  { start: 13, end: 16 },  
+  { start: 17, end: 20 }   
 ];
 
 export function isWithinAllowedTime() {
@@ -10,7 +10,6 @@ export function isWithinAllowedTime() {
   const currentHour = now.getHours();
   const currentMinute = now.getMinutes();
   
-  // Convert current time to minutes since midnight for easier comparison
   const currentTimeInMinutes = currentHour * 60 + currentMinute;
   
   return ALLOWED_TIME_SLOTS.some(slot => {

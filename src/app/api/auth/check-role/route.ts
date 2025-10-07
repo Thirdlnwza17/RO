@@ -7,7 +7,6 @@ export async function GET(request: NextRequest) {
     const client = await clientPromise;
     const db = client.db("OR");
     
-    // Get username from cookies
     const username = request.cookies.get('username')?.value || null;
     
     if (!username) {

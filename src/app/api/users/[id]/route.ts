@@ -11,7 +11,7 @@ export async function GET(
     
     if (!employeeId) {
       return NextResponse.json(
-        { error: "รหัสพนักงานไม่ถูกต้อง" },
+        { error: "รหัสพนักงานของท่านไม่ถูกต้อง" },
         { status: 400 }
       );
     }

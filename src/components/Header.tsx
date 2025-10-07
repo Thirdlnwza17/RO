@@ -1,8 +1,74 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { isWithinAllowedTime } from "@/utils/timeCheck";
+
+const EyesFollowCursor = () => {
+  const leftEyeRef = useRef<HTMLDivElement>(null);
+  const rightEyeRef = useRef<HTMLDivElement>(null);
+
+  const updateEyePosition = useCallback((e: MouseEvent) => {
+    if (!leftEyeRef.current || !rightEyeRef.current) return;
+
+    const leftEye = leftEyeRef.current.getBoundingClientRect();
+    const rightEye = rightEyeRef.current.getBoundingClientRect();
+
+    // Calculate angle between cursor and each eye
+    const leftAngle = Math.atan2(
+      e.clientY - (leftEye.top + leftEye.height / 2),
+      e.clientX - (leftEye.left + leftEye.width / 2)
+    );
+
+    const rightAngle = Math.atan2(
+      e.clientY - (rightEye.top + rightEye.height / 2),
+      e.clientX - (rightEye.left + rightEye.width / 2)
+    );
+
+    // Calculate new pupil position (limited to eye boundary)
+    const maxDistance = 5; // Max distance pupil can move from center
+    const leftX = Math.cos(leftAngle) * maxDistance;
+    const leftY = Math.sin(leftAngle) * maxDistance;
+    const rightX = Math.cos(rightAngle) * maxDistance;
+    const rightY = Math.sin(rightAngle) * maxDistance;
+
+    // Apply transform to pupils
+    const leftPupil = leftEyeRef.current.querySelector('.pupil') as HTMLElement;
+    const rightPupil = rightEyeRef.current.querySelector('.pupil') as HTMLElement;
+    
+    if (leftPupil) {
+      leftPupil.style.transform = `translate(${leftX}px, ${leftY}px)`;
+    }
+    if (rightPupil) {
+      rightPupil.style.transform = `translate(${rightX}px, ${rightY}px)`;
+    }
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener('mousemove', updateEyePosition);
+    return () => window.removeEventListener('mousemove', updateEyePosition);
+  }, [updateEyePosition]);
+
+  return (
+    <div className="flex items-center gap-2 mr-4">
+      {/* Left Eye */}
+      <div 
+        ref={leftEyeRef}
+        className="w-6 h-6 rounded-full bg-white border-2 border-blue-900 flex items-center justify-center relative overflow-hidden"
+      >
+        <div className="pupil w-3 h-3 rounded-full bg-blue-900 transition-transform duration-100 ease-linear" />
+      </div>
+      
+      {/* Right Eye */}
+      <div 
+        ref={rightEyeRef}
+        className="w-6 h-6 rounded-full bg-white border-2 border-blue-900 flex items-center justify-center relative overflow-hidden"
+      >
+        <div className="pupil w-3 h-3 rounded-full bg-blue-900 transition-transform duration-100 ease-linear" />
+      </div>
+    </div>
+  );
+};
 
 interface DbUser {
   _id?: string;
@@ -14,7 +80,6 @@ interface DbUser {
 export default function Header() {
   const [user, setUser] = useState<DbUser | null>(() => {
     if (typeof window !== "undefined") {
-      // Primary: user object saved at login
       try {
         const raw = window.localStorage.getItem("user");
         if (raw) {
@@ -23,7 +88,6 @@ export default function Header() {
         }
       } catch {}
 
-      // Fallbacks
       const d =
         window.localStorage.getItem("display") ||
         window.sessionStorage.getItem("display") ||
@@ -37,7 +101,6 @@ export default function Header() {
   });
   const [displayName, setDisplayName] = useState<string>(() => {
     if (typeof window !== "undefined") {
-      // Prefer display from saved user object
       try {
         const raw = window.localStorage.getItem("user");
         if (raw) {
@@ -75,7 +138,6 @@ export default function Header() {
   const [timeStr, setTimeStr] = useState<string>("");
   const [currentDate, setCurrentDate] = useState<string>("");
 
-  // real-time clock (Thai locale) - Using time slots from timeCheck.ts
   useEffect(() => {
     const formatNow = () => {
       const now = new Date();
@@ -83,7 +145,6 @@ export default function Header() {
       const minutes = now.getMinutes();
       const seconds = now.getSeconds();
       
-      // Format time with leading zeros
       const formatNum = (num: number) => num.toString().padStart(2, '0');
       const time = `${formatNum(hours)}:${formatNum(minutes)}:${formatNum(seconds)}`;
       
@@ -112,7 +173,6 @@ export default function Header() {
     const fetchUser = async () => {
       try {
         if (typeof window !== "undefined") {
-          // 0) Try to use full user object from localStorage (set at login)
           try {
             const raw = window.localStorage.getItem("user");
             if (raw) {
@@ -126,7 +186,6 @@ export default function Header() {
             }
           } catch {}
 
-          // 1) If display is already known, use it directly (no API call)
           const storedDisplay =
             window.localStorage.getItem("display") ||
             window.sessionStorage.getItem("display") ||
@@ -139,7 +198,6 @@ export default function Header() {
             setDisplayName(storedDisplay);
             return;
           }
-          // 2) If we have an id, fetch from API
           const storedId =
             window.localStorage.getItem("username") ||
             window.localStorage.getItem("employeeId") ||
@@ -151,7 +209,6 @@ export default function Header() {
               return mu ? decodeURIComponent(mu[1]) : me ? decodeURIComponent(me[1]) : null;
             })();
           if (storedId) {
-            // show the id immediately as a temporary display
             setDisplayName((prev) => prev || storedId);
             const res = await fetch(`/api/users/${encodeURIComponent(storedId)}`, { cache: "no-store" });
             if (res.ok) {
@@ -168,7 +225,6 @@ export default function Header() {
           }
         }
 
-        // Fallback: fetch list and take first
         const resAll = await fetch("/api/users", { cache: "no-store" });
         if (resAll.ok) {
           const dataAll = await resAll.json();
@@ -186,7 +242,6 @@ export default function Header() {
     fetchUser();
   }, []);
 
-  // close dropdown when clicking outside
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
       if (!menuRef.current) return;
@@ -218,7 +273,7 @@ export default function Header() {
       <header className="sticky top-0 left-0 right-0 z-50 w-full bg-white/95 backdrop-blur-lg shadow-lg border-b border-blue-100">
         <div className="w-full px-4 sm:px-6 py-3">
           <div className="flex items-center justify-between gap-4">
-            {/* Brand Section - Enhanced with Check Stock OR gradient */}
+            {/* Brand Section */}
             <div className="flex items-center gap-4 select-none">
               <div className="relative group">
                 <div className="relative w-20 h-20 sm:w-24 sm:h-24 flex items-center justify-center">
@@ -231,14 +286,12 @@ export default function Header() {
               </div>
               <div className="flex flex-col">
                 <div className="relative">
-                  {/* Main gradient text with Check Stock OR style */}
                   <span className="font-black text-xl sm:text-2xl md:text-3xl leading-tight relative">
                     <span className="bg-gradient-to-r from-blue-800 via-blue-600 to-blue-400 bg-clip-text text-transparent animate-gradient-x">
                     OR stock management
                     </span>
                   </span>
                   
-                  {/* Animated background glow */}
                   <div className="absolute inset-0 bg-gradient-to-r from-blue-400/20 via-purple-400/20 to-emerald-400/20 blur-sm opacity-0 group-hover:opacity-100 transition-opacity duration-500 -z-10"></div>
                 </div>
                 
@@ -248,13 +301,16 @@ export default function Header() {
               </div>
             </div>
 
-            {/* Enhanced Time Display */}
-            <div className="hidden sm:flex flex-col items-center justify-center bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl px-4 py-2 shadow-inner border border-blue-100">
-              <div className={`text-lg md:text-xl font-mono font-bold tracking-wider tabular-nums transition-colors duration-1000 ${isWithinAllowedTime() ? 'text-blue-400' : 'text-red-600'}`}>
-                {timeStr}
-              </div>
-              <div className="text-xs text-gray-600 font-medium mt-1 text-center leading-tight">
-                {currentDate}
+            {/* Time Display with Eyes */}
+            <div className="hidden sm:flex items-center gap-4">
+              <EyesFollowCursor />
+              <div className="flex flex-col items-center justify-center bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl px-4 py-2 shadow-inner border border-blue-100">
+                <div className={`text-lg md:text-xl font-mono font-bold tracking-wider tabular-nums transition-colors duration-1000 ${isWithinAllowedTime() ? 'text-blue-400' : 'text-red-600'}`}>
+                  {timeStr}
+                </div>
+                <div className="text-xs text-gray-600 font-medium mt-1 text-center leading-tight">
+                  {currentDate}
+                </div>
               </div>
             </div>
 
@@ -264,7 +320,7 @@ export default function Header() {
                 {timeStr}
               </div>
               <div className="text-xs text-gray-500 font-medium">
-                {currentDate.split(' ')[0]} {/* Just show day name on mobile */}
+                {currentDate.split(' ')[0]}
               </div>
             </div>
 
@@ -347,7 +403,7 @@ export default function Header() {
           </div>
         </div>
 
-        {/* Decorative bottom border - full viewport width */}
+        {/* Decorative bottom border */}
         <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-screen h-1 bg-gradient-to-r from-blue-500 via-blue-400 to-cyan-400 z-0 pointer-events-none"></div>
       </header>
 
@@ -389,7 +445,6 @@ export default function Header() {
           to { transform: translateY(0); }
         }
         
-        /* Gradient animation keyframes */
         @keyframes gradient-x {
           0%, 100% {
             background-size: 200% 200%;
@@ -406,7 +461,6 @@ export default function Header() {
           animation: gradient-x 3s ease infinite;
         }
         
-        /* Enhanced gradient effects */
         .group:hover .animate-gradient-x {
           animation-duration: 1.5s;
         }

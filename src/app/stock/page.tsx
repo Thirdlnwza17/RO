@@ -1,9 +1,10 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
 import Header from "../../components/Header";
-import { FaPlus, FaChevronLeft, FaChevronRight } from "react-icons/fa";
+import { FaPlus, FaChevronLeft, FaChevronRight} from "react-icons/fa";
+import { isWithinAllowedTime, getNextAllowedTime } from "../../utils/timeCheck";
+import Swal from 'sweetalert2';
 
 interface CabinetSummary {
   id: number;
@@ -45,29 +46,90 @@ export default function StockPage() {
 
  
   const cabinetColors = [
-    "from-blue-500 to-blue-600 border-blue-800",
-    "from-emerald-500 to-emerald-600 border-emerald-800",
-    "from-purple-500 to-purple-600 border-purple-800",
-    "from-orange-500 to-orange-600 border-orange-800",
-    "from-pink-500 to-pink-600 border-pink-800",
-    "from-indigo-500 to-indigo-600 border-indigo-800",
-    "from-teal-500 to-teal-600 border-teal-800",
-    "from-red-500 to-red-600 border-red-800",
-    "from-cyan-500 to-cyan-600 border-cyan-800",
+    "from-blue-300 to-blue-400 border-blue-500",
+    "from-emerald-300 to-emerald-400 border-emerald-500",
+    "from-purple-300 to-purple-400 border-purple-500",
+    "from-orange-300 to-orange-400 border-orange-500",
+    "from-pink-300 to-pink-400 border-pink-500",
+    "from-indigo-300 to-indigo-400 border-indigo-500",
+    "from-teal-300 to-teal-400 border-teal-500",
+    "from-red-300 to-red-400 border-red-500",
+    "from-cyan-300 to-cyan-400 border-cyan-500",
   ];
 
-  const handleCabinetClick = (cabinetId: number) => {
+  const handleCabinetClick = async (cabinetId: number) => {
+    if (!isWithinAllowedTime() && !isAdmin) {
+      const nextTime = getNextAllowedTime();
+      await Swal.fire({
+        title: 'ไม่สามารถทำการได้',
+        html: `
+          <div class="text-center">
+            <div class="text-5xl mb-4">
+              <FaClock class="inline-block text-yellow-500" />
+            </div>
+            <p class="text-sm text-gray-600 mb-4">สามารถเข้าใช้งานได้ในเวลา 08:00-12:00, 13:00-16:00, 17:00-20:00</p>
+            <p class="text-sm text-gray-500">หรือติดต่อผู้ดูแลระบบ</p>
+            <div class="mt-4 p-3 bg-blue-50 rounded-lg">
+              <p class="text-sm font-medium text-blue-800">เวลาถัดไปที่สามารถเข้าใช้งานได้:</p>
+              <p class="text-lg font-bold text-blue-600">${nextTime}</p>
+            </div>
+          </div>
+        `,
+        icon: 'warning',
+        confirmButtonText: 'ตกลง',
+        confirmButtonColor: '#3b82f6',
+        customClass: {
+          confirmButton: 'px-6 py-2 rounded-lg',
+        },
+      });
+      return;
+    }
     router.push(`/stock/cabinet/${cabinetId}`);
   };
 
   useEffect(() => {
+    const checkAccess = async () => {
+      if (!isWithinAllowedTime() && !isAdmin) {
+        const nextTime = getNextAllowedTime();
+        await Swal.fire({
+          title: 'ไม่สามารถทำการได้',
+          html: `
+            <div class="text-center">
+              <div class="text-5xl mb-4">
+                <FaClock class="inline-block text-yellow-500" />
+              </div>
+              <p class="text-gray-700 mb-2">ไม่สามารถทำการในช่วงเวลานี้ได้</p>
+              <p class="text-sm text-gray-600 mb-4">สามารถเข้าใช้งานได้ในเวลา 08:00-12:00, 13:00-16:00, 17:00-20:00</p>
+              <p class="text-sm text-gray-500">หรือติดต่อผู้ดูแลระบบ</p>
+              <div class="mt-4 p-3 bg-blue-50 rounded-lg">
+                <p class="text-sm font-medium text-blue-800">เวลาถัดไปที่สามารถเข้าใช้งานได้:</p>
+                <p class="text-lg font-bold text-blue-600">${nextTime}</p>
+              </div>
+            </div>
+          `,
+          icon: 'warning',
+          confirmButtonText: 'ตกลง',
+          confirmButtonColor: '#3b82f6',
+          customClass: {
+            confirmButton: 'px-6 py-2 rounded-lg',
+          },
+        });
+      }
+    };
+
     const fetchData = async () => {
       try {
         // Check admin status
         const roleRes = await fetch('/api/auth/check-role');
         if (roleRes.ok) {
           const roleData = await roleRes.json();
-          setIsAdmin(roleData.role === 'admin');
+          const isUserAdmin = roleData.role === 'admin';
+          setIsAdmin(isUserAdmin);
+          
+          // Only check time for non-admin users
+          if (!isUserAdmin) {
+            checkAccess();
+          }
         }
 
         const res = await fetch("/api/stock");
